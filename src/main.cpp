@@ -1,8 +1,19 @@
 #include <SFML/Window.hpp>
 #include <glad/glad.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#include <cmath>
 #include <iostream>
 #include <optional>
+#include <vector>
+
+struct Vertex
+{
+    glm::vec3 position;
+};
 
 GLuint compileShader(GLenum type, const char* source)
 {
@@ -29,26 +40,27 @@ GLuint createShaderProgram()
         #version 410 core
 
         layout (location = 0) in vec3 aPos;
-        layout (location = 1) in vec3 aColor;
 
-        out vec3 vertexColor;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
 
         void main()
         {
-            gl_Position = vec4(aPos, 1.0);
-            vertexColor = aColor;
+            gl_Position = projection * view * model * vec4(aPos, 1.0);
         }
     )";
 
     const char* fragmentShaderSource = R"(
         #version 410 core
 
-        in vec3 vertexColor;
         out vec4 FragColor;
+
+        uniform vec3 objectColor;
 
         void main()
         {
-            FragColor = vec4(vertexColor, 1.0);
+            FragColor = vec4(objectColor, 1.0);
         }
     )";
 
@@ -76,6 +88,78 @@ GLuint createShaderProgram()
     return shaderProgram;
 }
 
+void createSphere(
+    std::vector<Vertex>& vertices,
+    std::vector<unsigned int>& indices,
+    float radius,
+    int sectorCount,
+    int stackCount
+)
+{
+    const float PI = 3.14159265359f;
+
+    for (int i = 0; i <= stackCount; ++i)
+    {
+        float stackAngle = PI / 2.0f - i * PI / stackCount;
+        float xy = radius * std::cos(stackAngle);
+        float z = radius * std::sin(stackAngle);
+
+        for (int j = 0; j <= sectorCount; ++j)
+        {
+            float sectorAngle = j * 2.0f * PI / sectorCount;
+
+            float x = xy * std::cos(sectorAngle);
+            float y = xy * std::sin(sectorAngle);
+
+            vertices.push_back({ glm::vec3(x, y, z) });
+        }
+    }
+
+    for (int i = 0; i < stackCount; ++i)
+    {
+        int k1 = i * (sectorCount + 1);
+        int k2 = k1 + sectorCount + 1;
+
+        for (int j = 0; j < sectorCount; ++j, ++k1, ++k2)
+        {
+            if (i != 0)
+            {
+                indices.push_back(k1);
+                indices.push_back(k2);
+                indices.push_back(k1 + 1);
+            }
+
+            if (i != stackCount - 1)
+            {
+                indices.push_back(k1 + 1);
+                indices.push_back(k2);
+                indices.push_back(k2 + 1);
+            }
+        }
+    }
+}
+
+void drawSphere(
+    GLuint shaderProgram,
+    GLuint VAO,
+    unsigned int indexCount,
+    const glm::mat4& model,
+    const glm::vec3& color
+)
+{
+    glUseProgram(shaderProgram);
+
+    GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
+    GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
+
+    glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform3fv(colorLocation, 1, glm::value_ptr(color));
+
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+}
+
 int main()
 {
     sf::ContextSettings settings;
@@ -87,7 +171,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 03",
+        "Sistema Solare 3D - Tappa 04",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -102,50 +186,76 @@ int main()
     }
 
     glViewport(0, 0, 1280, 720);
-    glClearColor(0.02f, 0.02f, 0.08f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
 
     GLuint shaderProgram = createShaderProgram();
 
-    float vertices[] = {
-        // posizione           // colore
-         0.0f,  0.6f, 0.0f,    1.0f, 0.8f, 0.1f,
-        -0.6f, -0.5f, 0.0f,    0.1f, 0.6f, 1.0f,
-         0.6f, -0.5f, 0.0f,    0.8f, 0.1f, 1.0f
-    };
+    std::vector<Vertex> sphereVertices;
+    std::vector<unsigned int> sphereIndices;
+
+    createSphere(sphereVertices, sphereIndices, 1.0f, 48, 24);
 
     GLuint VAO = 0;
     GLuint VBO = 0;
+    GLuint EBO = 0;
 
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        sphereVertices.size() * sizeof(Vertex),
+        sphereVertices.data(),
+        GL_STATIC_DRAW
+    );
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(
+        GL_ELEMENT_ARRAY_BUFFER,
+        sphereIndices.size() * sizeof(unsigned int),
+        sphereIndices.data(),
+        GL_STATIC_DRAW
+    );
 
     glVertexAttribPointer(
         0,
         3,
         GL_FLOAT,
         GL_FALSE,
-        6 * sizeof(float),
+        sizeof(Vertex),
         reinterpret_cast<void*>(0)
     );
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(
-        1,
-        3,
-        GL_FLOAT,
-        GL_FALSE,
-        6 * sizeof(float),
-        reinterpret_cast<void*>(3 * sizeof(float))
-    );
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(0.0f, -8.0f, 5.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    glm::mat4 projection = glm::perspective(
+        glm::radians(45.0f),
+        1280.0f / 720.0f,
+        0.1f,
+        100.0f
+    );
+
+    glUseProgram(shaderProgram);
+
+    GLint viewLocation = glGetUniformLocation(shaderProgram, "view");
+    GLint projectionLocation = glGetUniformLocation(shaderProgram, "projection");
+
+    glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
+
+    float time = 0.0f;
 
     while (window.isOpen())
     {
@@ -167,20 +277,61 @@ int main()
             if (const auto* resized = event->getIf<sf::Event::Resized>())
             {
                 glViewport(0, 0, resized->size.x, resized->size.y);
+
+                projection = glm::perspective(
+                    glm::radians(45.0f),
+                    static_cast<float>(resized->size.x) / static_cast<float>(resized->size.y),
+                    0.1f,
+                    100.0f
+                );
+
+                glUseProgram(shaderProgram);
+                glUniformMatrix4fv(
+                    projectionLocation,
+                    1,
+                    GL_FALSE,
+                    glm::value_ptr(projection)
+                );
             }
         }
 
+        time += 0.01f;
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shaderProgram);
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glm::mat4 sunModel = glm::mat4(1.0f);
+        sunModel = glm::scale(sunModel, glm::vec3(1.5f));
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            sunModel,
+            glm::vec3(1.0f, 0.75f, 0.05f)
+        );
+
+        float orbitRadius = 4.0f;
+
+        glm::mat4 planetModel = glm::mat4(1.0f);
+        planetModel = glm::rotate(planetModel, time, glm::vec3(0.0f, 0.0f, 1.0f));
+        planetModel = glm::translate(planetModel, glm::vec3(orbitRadius, 0.0f, 0.0f));
+        planetModel = glm::rotate(planetModel, time * 3.0f, glm::vec3(0.0f, 0.0f, 1.0f));
+        planetModel = glm::scale(planetModel, glm::vec3(0.45f));
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            planetModel,
+            glm::vec3(0.1f, 0.35f, 1.0f)
+        );
 
         window.display();
     }
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
     glDeleteProgram(shaderProgram);
 
     return 0;
