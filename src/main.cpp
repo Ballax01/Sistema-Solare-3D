@@ -1,4 +1,5 @@
 #include <SFML/Window.hpp>
+#include <SFML/System.hpp>
 #include <glad/glad.h>
 
 #include <glm/glm.hpp>
@@ -168,6 +169,23 @@ void drawSphere(
     glBindVertexArray(0);
 }
 
+glm::mat4 createCameraView(float yaw, float pitch, float distance)
+{
+    float yawRad = glm::radians(yaw);
+    float pitchRad = glm::radians(pitch);
+
+    glm::vec3 cameraPosition;
+    cameraPosition.x = distance * std::cos(pitchRad) * std::sin(yawRad);
+    cameraPosition.y = -distance * std::cos(pitchRad) * std::cos(yawRad);
+    cameraPosition.z = distance * std::sin(pitchRad);
+
+    return glm::lookAt(
+        cameraPosition,
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+}
+
 int main()
 {
     sf::ContextSettings settings;
@@ -179,7 +197,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 05",
+        "Sistema Solare 3D - Tappa 06",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -242,12 +260,6 @@ int main()
 
     glBindVertexArray(0);
 
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, -12.0f, 7.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-
     glm::mat4 projection = glm::perspective(
         glm::radians(45.0f),
         1280.0f / 720.0f,
@@ -260,7 +272,6 @@ int main()
     GLint viewLocation = glGetUniformLocation(shaderProgram, "view");
     GLint projectionLocation = glGetUniformLocation(shaderProgram, "projection");
 
-    glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
 
     std::vector<Planet> planets = {
@@ -270,10 +281,18 @@ int main()
         { 8.0f, 0.75f, 0.55f, 2.0f, glm::vec3(0.85f, 0.65f, 0.35f) }
     };
 
-    float time = 0.0f;
+    float simulationTime = 0.0f;
+
+    float cameraYaw = 0.0f;
+    float cameraPitch = 32.0f;
+    float cameraDistance = 14.0f;
+
+    sf::Clock clock;
 
     while (window.isOpen())
     {
+        float deltaTime = clock.restart().asSeconds();
+
         while (const std::optional event = window.pollEvent())
         {
             if (event->is<sf::Event::Closed>())
@@ -310,7 +329,65 @@ int main()
             }
         }
 
-        time += 0.01f;
+        float cameraRotationSpeed = 70.0f;
+        float cameraZoomSpeed = 8.0f;
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
+        {
+            cameraYaw -= cameraRotationSpeed * deltaTime;
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
+        {
+            cameraYaw += cameraRotationSpeed * deltaTime;
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Up))
+        {
+            cameraPitch += cameraRotationSpeed * deltaTime;
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Down))
+        {
+            cameraPitch -= cameraRotationSpeed * deltaTime;
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+        {
+            cameraDistance -= cameraZoomSpeed * deltaTime;
+        }
+
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+        {
+            cameraDistance += cameraZoomSpeed * deltaTime;
+        }
+
+        if (cameraPitch > 80.0f)
+        {
+            cameraPitch = 80.0f;
+        }
+
+        if (cameraPitch < 5.0f)
+        {
+            cameraPitch = 5.0f;
+        }
+
+        if (cameraDistance < 5.0f)
+        {
+            cameraDistance = 5.0f;
+        }
+
+        if (cameraDistance > 30.0f)
+        {
+            cameraDistance = 30.0f;
+        }
+
+        simulationTime += deltaTime;
+
+        glm::mat4 view = createCameraView(cameraYaw, cameraPitch, cameraDistance);
+
+        glUseProgram(shaderProgram);
+        glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -331,7 +408,7 @@ int main()
 
             planetModel = glm::rotate(
                 planetModel,
-                time * planet.orbitSpeed,
+                simulationTime * planet.orbitSpeed,
                 glm::vec3(0.0f, 0.0f, 1.0f)
             );
 
@@ -342,7 +419,7 @@ int main()
 
             planetModel = glm::rotate(
                 planetModel,
-                time * planet.rotationSpeed,
+                simulationTime * planet.rotationSpeed,
                 glm::vec3(0.0f, 0.0f, 1.0f)
             );
 
