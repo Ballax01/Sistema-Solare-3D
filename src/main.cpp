@@ -1,6 +1,22 @@
 #include <SFML/Window.hpp>
 #include <SFML/OpenGL.hpp>
-#include <iostream>
+#include <optional>
+
+void drawTriangle()
+{
+    glBegin(GL_TRIANGLES);
+
+    glColor3f(1.0f, 0.8f, 0.1f);
+    glVertex2f(0.0f, 0.6f);
+
+    glColor3f(0.1f, 0.6f, 1.0f);
+    glVertex2f(-0.6f, -0.5f);
+
+    glColor3f(0.8f, 0.1f, 1.0f);
+    glVertex2f(0.6f, -0.5f);
+
+    glEnd();
+}
 
 int main()
 {
@@ -12,7 +28,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 01",
+        "Sistema Solare 3D - Tappa 02",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -41,6 +57,8 @@ int main()
         }
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        drawTriangle();
 
         window.display();
     }

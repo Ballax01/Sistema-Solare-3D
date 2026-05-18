@@ -1,0 +1,14 @@
+build/
+.vscode/
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.log
+.cmake/
+CMakeFiles/
+CMakeCache.txt
+*.vcxproj
+*.vcxproj.filters
+*.sln
