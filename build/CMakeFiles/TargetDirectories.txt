@@ -1,0 +1,3 @@
+C:/Users/alist/OneDrive - unige.it/Desktop/sistema-solare-3d/build/CMakeFiles/SistemaSolare3D.dir
+C:/Users/alist/OneDrive - unige.it/Desktop/sistema-solare-3d/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/alist/OneDrive - unige.it/Desktop/sistema-solare-3d/build/CMakeFiles/ZERO_CHECK.dir
