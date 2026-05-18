@@ -15,6 +15,15 @@ struct Vertex
     glm::vec3 position;
 };
 
+struct Planet
+{
+    float orbitRadius;
+    float size;
+    float orbitSpeed;
+    float rotationSpeed;
+    glm::vec3 color;
+};
+
 GLuint compileShader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);
@@ -55,7 +64,6 @@ GLuint createShaderProgram()
         #version 410 core
 
         out vec4 FragColor;
-
         uniform vec3 objectColor;
 
         void main()
@@ -171,7 +179,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 04",
+        "Sistema Solare 3D - Tappa 05",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -235,7 +243,7 @@ int main()
     glBindVertexArray(0);
 
     glm::mat4 view = glm::lookAt(
-        glm::vec3(0.0f, -8.0f, 5.0f),
+        glm::vec3(0.0f, -12.0f, 7.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
@@ -254,6 +262,13 @@ int main()
 
     glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
+
+    std::vector<Planet> planets = {
+        { 3.0f, 0.30f, 1.80f, 4.0f, glm::vec3(0.55f, 0.55f, 0.55f) },
+        { 4.5f, 0.45f, 1.20f, 3.0f, glm::vec3(0.1f, 0.35f, 1.0f) },
+        { 6.2f, 0.55f, 0.85f, 2.5f, glm::vec3(0.9f, 0.25f, 0.1f) },
+        { 8.0f, 0.75f, 0.55f, 2.0f, glm::vec3(0.85f, 0.65f, 0.35f) }
+    };
 
     float time = 0.0f;
 
@@ -300,7 +315,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 sunModel = glm::mat4(1.0f);
-        sunModel = glm::scale(sunModel, glm::vec3(1.5f));
+        sunModel = glm::scale(sunModel, glm::vec3(1.4f));
 
         drawSphere(
             shaderProgram,
@@ -310,21 +325,40 @@ int main()
             glm::vec3(1.0f, 0.75f, 0.05f)
         );
 
-        float orbitRadius = 4.0f;
+        for (const Planet& planet : planets)
+        {
+            glm::mat4 planetModel = glm::mat4(1.0f);
 
-        glm::mat4 planetModel = glm::mat4(1.0f);
-        planetModel = glm::rotate(planetModel, time, glm::vec3(0.0f, 0.0f, 1.0f));
-        planetModel = glm::translate(planetModel, glm::vec3(orbitRadius, 0.0f, 0.0f));
-        planetModel = glm::rotate(planetModel, time * 3.0f, glm::vec3(0.0f, 0.0f, 1.0f));
-        planetModel = glm::scale(planetModel, glm::vec3(0.45f));
+            planetModel = glm::rotate(
+                planetModel,
+                time * planet.orbitSpeed,
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            );
 
-        drawSphere(
-            shaderProgram,
-            VAO,
-            static_cast<unsigned int>(sphereIndices.size()),
-            planetModel,
-            glm::vec3(0.1f, 0.35f, 1.0f)
-        );
+            planetModel = glm::translate(
+                planetModel,
+                glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
+            );
+
+            planetModel = glm::rotate(
+                planetModel,
+                time * planet.rotationSpeed,
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            );
+
+            planetModel = glm::scale(
+                planetModel,
+                glm::vec3(planet.size)
+            );
+
+            drawSphere(
+                shaderProgram,
+                VAO,
+                static_cast<unsigned int>(sphereIndices.size()),
+                planetModel,
+                planet.color
+            );
+        }
 
         window.display();
     }
