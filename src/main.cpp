@@ -34,6 +34,14 @@ struct Planet
     glm::vec3 color;
 };
 
+struct SunInfo
+{
+    std::string name;
+    std::string type;
+    std::string description;
+    float size;
+};
+
 struct PlanetScreenInfo
 {
     int index;
@@ -330,14 +338,36 @@ glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
     return planetModel;
 }
 
+std::string formatSimulationValue(float value, const std::string& unit)
+{
+    std::ostringstream stream;
+    stream.setf(std::ios::fixed);
+    stream.precision(2);
+    stream << value << " " << unit;
+    return stream.str();
+}
+
 void printPlanetInfo(const Planet& planet)
 {
     std::cout << "\n==============================\n";
     std::cout << "Pianeta selezionato: " << planet.name << "\n";
     std::cout << "Tipo: " << planet.type << "\n";
     std::cout << "Descrizione: " << planet.description << "\n";
-    std::cout << "Distanza orbitale simulata: " << planet.orbitRadius << "\n";
-    std::cout << "Dimensione simulata: " << planet.size << "\n";
+    std::cout << "Distanza orbitale simulata: "
+              << formatSimulationValue(planet.orbitRadius, "unita scena") << "\n";
+    std::cout << "Scala dimensione: "
+              << formatSimulationValue(planet.size, "fattore scala") << "\n";
+    std::cout << "==============================\n";
+}
+
+void printSunInfo(const SunInfo& sun)
+{
+    std::cout << "\n==============================\n";
+    std::cout << "Corpo selezionato: " << sun.name << "\n";
+    std::cout << "Tipo: " << sun.type << "\n";
+    std::cout << "Descrizione: " << sun.description << "\n";
+    std::cout << "Scala dimensione: "
+              << formatSimulationValue(sun.size, "fattore scala") << "\n";
     std::cout << "==============================\n";
 }
 
@@ -354,7 +384,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 12 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 13 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -491,6 +521,8 @@ void drawInfoPanel(
     bool fontLoaded,
     const std::vector<Planet>& planets,
     int selectedPlanetIndex,
+    const SunInfo& sunInfo,
+    bool isSunSelected,
     unsigned int windowWidth,
     unsigned int windowHeight
 )
@@ -507,7 +539,7 @@ void drawInfoPanel(
         panelWidth = static_cast<float>(windowWidth) - 32.0f;
     }
 
-    const float panelHeight = 158.0f;
+    const float panelHeight = 196.0f;
     const float margin = 18.0f;
     const float x = margin;
     const float y = static_cast<float>(windowHeight) - panelHeight - margin;
@@ -520,18 +552,30 @@ void drawInfoPanel(
 
     window.draw(panel);
 
-    std::string title = "Nessun pianeta";
+    std::string title = "Nessun corpo selezionato";
     std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
     std::string body = wrapText(
-        "Clicca su un pianeta per vedere nome, tipo e descrizione.",
+        "Clicca sul Sole o su un pianeta per vedere nome, tipo e descrizione.",
         maxLineLength
     );
 
-    if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
+    if (isSunSelected)
+    {
+        title = sunInfo.name;
+        body =
+            "Tipo: " + sunInfo.type + "\n" +
+            wrapText(sunInfo.description, maxLineLength) + "\n" +
+            "Scala dimensione: " + formatSimulationValue(sunInfo.size, "fattore scala");
+    }
+    else if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
     {
         const Planet& planet = planets[selectedPlanetIndex];
         title = planet.name;
-        body = "Tipo: " + planet.type + "\n" + wrapText(planet.description, maxLineLength);
+        body =
+            "Tipo: " + planet.type + "\n" +
+            wrapText(planet.description, maxLineLength) + "\n" +
+            "Distanza orbitale simulata: " + formatSimulationValue(planet.orbitRadius, "unita scena") + "\n" +
+            "Scala dimensione: " + formatSimulationValue(planet.size, "fattore scala");
     }
 
     sf::Text titleText(font, title, 22);
@@ -581,7 +625,7 @@ void drawControlsLegend(
         font,
         "Frecce: ruota camera   W/S: zoom   SPACE: pausa   +/-: velocita\n"
         "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "F: esci follow   1-8: pianeti   ESC: esci",
+        "F: esci follow   1-8: pianeti   click: Sole/pianeti   ESC: esci",
         14
     );
     controlsText.setPosition({ x + 14.0f, y + 38.0f });
@@ -624,6 +668,19 @@ int findClickedPlanet(
     return selectedIndex;
 }
 
+bool isClickOnScreenInfo(
+    int mouseX,
+    int mouseY,
+    const PlanetScreenInfo& screenInfo
+)
+{
+    float dx = static_cast<float>(mouseX) - screenInfo.x;
+    float dy = static_cast<float>(mouseY) - screenInfo.y;
+    float distance = std::sqrt(dx * dx + dy * dy);
+
+    return distance <= screenInfo.radius;
+}
+
 int main()
 {
     unsigned int windowWidth = 1280;
@@ -638,7 +695,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 12",
+        "Sistema Solare 3D - Tappa 13",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -763,11 +820,18 @@ int main()
 
     glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
 
+    SunInfo sunInfo = {
+        "Sole",
+        "Stella",
+        "Il Sole e la stella al centro del Sistema Solare. La sua energia deriva da reazioni di fusione nucleare e illumina e riscalda i pianeti che orbitano attorno ad esso.",
+        1.35f
+    };
+
     std::vector<Planet> planets = {
         {
             "Mercurio",
             "Pianeta roccioso",
-            "Il pianeta più vicino al Sole e il più piccolo del Sistema Solare.",
+            "Il pianeta piu vicino al Sole e il piu piccolo del Sistema Solare.",
             2.4f,
             0.22f,
             2.40f,
@@ -807,7 +871,7 @@ int main()
         {
             "Giove",
             "Gigante gassoso",
-            "Il pianeta più grande del Sistema Solare, caratterizzato da intense tempeste atmosferiche.",
+            "Il pianeta piu grande del Sistema Solare, caratterizzato da intense tempeste atmosferiche.",
             7.4f,
             0.90f,
             0.85f,
@@ -817,7 +881,7 @@ int main()
         {
             "Saturno",
             "Gigante gassoso",
-            "Famoso per il suo grande sistema di anelli, che verrà aggiunto in una tappa successiva.",
+            "Famoso per il suo grande sistema di anelli, che verra aggiunto in una tappa successiva.",
             9.4f,
             0.78f,
             0.65f,
@@ -837,7 +901,7 @@ int main()
         {
             "Nettuno",
             "Gigante ghiacciato",
-            "Il pianeta più lontano dal Sole, caratterizzato da venti molto intensi.",
+            "Il pianeta piu lontano dal Sole, caratterizzato da venti molto intensi.",
             13.0f,
             0.60f,
             0.38f,
@@ -853,6 +917,7 @@ int main()
     float cameraDistance = 22.0f;
 
     int selectedPlanetIndex = -1;
+    bool isSunSelected = false;
     bool isPaused = false;
     float timeScale = 1.0f;
     bool showOrbits = true;
@@ -863,6 +928,13 @@ int main()
     float previousCameraDistance = cameraDistance;
 
     std::vector<PlanetScreenInfo> planetScreenInfos;
+
+    PlanetScreenInfo sunScreenInfo = {
+        -100,
+        static_cast<float>(windowWidth) * 0.5f,
+        static_cast<float>(windowHeight) * 0.5f,
+        50.0f
+    };
 
     sf::Clock clock;
 
@@ -966,6 +1038,7 @@ int main()
 
                 if (keyboardPlanetIndex != -1)
                 {
+                    isSunSelected = false;
                     selectPlanet(keyboardPlanetIndex, selectedPlanetIndex, planets, window);
                     startFollowingSelectedPlanet(
                         selectedPlanetIndex,
@@ -985,30 +1058,15 @@ int main()
             {
                 if (mousePressed->button == sf::Mouse::Button::Left)
                 {
-                    int clickedIndex = findClickedPlanet(
-                        mousePressed->position.x,
-                        mousePressed->position.y,
-                        planetScreenInfos
-                    );
-
-                    if (clickedIndex != -1)
-                    {
-                        selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
-                        startFollowingSelectedPlanet(
-                            selectedPlanetIndex,
-                            planets,
-                            isFollowingPlanet,
-                            cameraYaw,
-                            cameraPitch,
-                            cameraDistance,
-                            previousCameraYaw,
-                            previousCameraPitch,
-                            previousCameraDistance
-                        );
-                    }
-                    else
+                    if (isClickOnScreenInfo(
+                            mousePressed->position.x,
+                            mousePressed->position.y,
+                            sunScreenInfo
+                        ))
                     {
                         selectedPlanetIndex = -1;
+                        isSunSelected = true;
+
                         stopFollowingPlanet(
                             isFollowingPlanet,
                             cameraYaw,
@@ -1018,8 +1076,50 @@ int main()
                             previousCameraPitch,
                             previousCameraDistance
                         );
-                        std::cout << "\nNessun pianeta selezionato.\n";
-                        window.setTitle("Sistema Solare 3D - Tappa 12");
+
+                        printSunInfo(sunInfo);
+                        window.setTitle("Sistema Solare 3D - Tappa 13 | Selezionato: Sole");
+                    }
+                    else
+                    {
+                        int clickedIndex = findClickedPlanet(
+                            mousePressed->position.x,
+                            mousePressed->position.y,
+                            planetScreenInfos
+                        );
+
+                        if (clickedIndex != -1)
+                        {
+                            isSunSelected = false;
+                            selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
+                            startFollowingSelectedPlanet(
+                                selectedPlanetIndex,
+                                planets,
+                                isFollowingPlanet,
+                                cameraYaw,
+                                cameraPitch,
+                                cameraDistance,
+                                previousCameraYaw,
+                                previousCameraPitch,
+                                previousCameraDistance
+                            );
+                        }
+                        else
+                        {
+                            selectedPlanetIndex = -1;
+                            isSunSelected = false;
+                            stopFollowingPlanet(
+                                isFollowingPlanet,
+                                cameraYaw,
+                                cameraPitch,
+                                cameraDistance,
+                                previousCameraYaw,
+                                previousCameraPitch,
+                                previousCameraDistance
+                            );
+                            std::cout << "\nNessun corpo celeste selezionato.\n";
+                            window.setTitle("Sistema Solare 3D - Tappa 13");
+                        }
                     }
                 }
             }
@@ -1165,14 +1265,21 @@ int main()
         glm::vec3 lightPosition(0.0f, 0.0f, 0.0f);
 
         glm::mat4 sunModel = glm::mat4(1.0f);
-        sunModel = glm::scale(sunModel, glm::vec3(1.35f));
+        sunModel = glm::scale(sunModel, glm::vec3(sunInfo.size));
+
+        glm::vec3 sunColor = glm::vec3(1.0f, 0.75f, 0.05f);
+
+        if (isSunSelected)
+        {
+            sunColor = glm::vec3(1.0f, 1.0f, 0.35f);
+        }
 
         drawSphere(
             shaderProgram,
             VAO,
             static_cast<unsigned int>(sphereIndices.size()),
             sunModel,
-            glm::vec3(1.0f, 0.75f, 0.05f),
+            sunColor,
             lightPosition,
             false
         );
@@ -1185,6 +1292,19 @@ int main()
             static_cast<float>(windowWidth),
             static_cast<float>(windowHeight)
         );
+
+        glm::vec4 sunCenterWorld = sunModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        glm::vec3 projectedSun = glm::project(
+            glm::vec3(sunCenterWorld),
+            view,
+            projection,
+            viewport
+        );
+
+        sunScreenInfo.x = projectedSun.x;
+        sunScreenInfo.y = static_cast<float>(windowHeight) - projectedSun.y;
+        sunScreenInfo.radius = 36.0f + sunInfo.size * 20.0f;
 
         for (int i = 0; i < static_cast<int>(planets.size()); ++i)
         {
@@ -1248,6 +1368,8 @@ int main()
                 uiFontLoaded,
                 planets,
                 selectedPlanetIndex,
+                sunInfo,
+                isSunSelected,
                 windowWidth,
                 windowHeight
             );
