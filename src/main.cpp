@@ -1,3 +1,4 @@
+#include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/System.hpp>
 #include <glad/glad.h>
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <iostream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -278,6 +280,116 @@ void printPlanetInfo(const Planet& planet)
     std::cout << "==============================\n";
 }
 
+std::string wrapText(const std::string& text, std::size_t maxLineLength)
+{
+    std::istringstream words(text);
+    std::string word;
+    std::string line;
+    std::string result;
+
+    while (words >> word)
+    {
+        if (!line.empty() && line.size() + 1 + word.size() > maxLineLength)
+        {
+            result += line + "\n";
+            line.clear();
+        }
+
+        if (!line.empty())
+        {
+            line += " ";
+        }
+
+        line += word;
+    }
+
+    result += line;
+    return result;
+}
+
+bool loadUIFont(sf::Font& font)
+{
+    const std::vector<std::string> fontPaths = {
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/calibri.ttf"
+    };
+
+    for (const std::string& path : fontPaths)
+    {
+        if (font.openFromFile(path))
+        {
+            return true;
+        }
+    }
+
+    std::cerr << "Avviso: impossibile caricare un font per il pannello informativo.\n";
+    return false;
+}
+
+void drawInfoPanel(
+    sf::RenderWindow& window,
+    const sf::Font& font,
+    bool fontLoaded,
+    const std::vector<Planet>& planets,
+    int selectedPlanetIndex,
+    unsigned int windowWidth,
+    unsigned int windowHeight
+)
+{
+    if (!fontLoaded)
+    {
+        return;
+    }
+
+    float panelWidth = 360.0f;
+
+    if (windowWidth < 520)
+    {
+        panelWidth = static_cast<float>(windowWidth) - 32.0f;
+    }
+
+    const float panelHeight = 158.0f;
+    const float margin = 18.0f;
+    const float x = margin;
+    const float y = static_cast<float>(windowHeight) - panelHeight - margin;
+
+    sf::RectangleShape panel({ panelWidth, panelHeight });
+    panel.setPosition({ x, y });
+    panel.setFillColor(sf::Color(8, 12, 24, 220));
+    panel.setOutlineColor(sf::Color(95, 120, 170, 230));
+    panel.setOutlineThickness(1.0f);
+
+    window.draw(panel);
+
+    std::string title = "Nessun pianeta";
+    std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
+    std::string body = wrapText(
+        "Clicca su un pianeta per vedere nome, tipo e descrizione.",
+        maxLineLength
+    );
+
+    if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
+    {
+        const Planet& planet = planets[selectedPlanetIndex];
+        title = planet.name;
+        body = "Tipo: " + planet.type + "\n" + wrapText(planet.description, maxLineLength);
+    }
+
+    sf::Text titleText(font, title, 22);
+    titleText.setPosition({ x + 18.0f, y + 16.0f });
+    titleText.setFillColor(sf::Color(255, 232, 140));
+    titleText.setStyle(sf::Text::Bold);
+
+    sf::Text bodyText(font, body, 16);
+    bodyText.setPosition({ x + 18.0f, y + 52.0f });
+    bodyText.setFillColor(sf::Color(225, 232, 245));
+    bodyText.setLineSpacing(1.18f);
+
+    window.draw(titleText);
+    window.draw(bodyText);
+}
+
 int findClickedPlanet(
     int mouseX,
     int mouseY,
@@ -320,11 +432,11 @@ int main()
     settings.stencilBits = 8;
     settings.majorVersion = 4;
     settings.minorVersion = 1;
-    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
+    settings.attributeFlags = sf::ContextSettings::Attribute::Default;
 
-    sf::Window window(
+    sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 09",
+        "Sistema Solare 3D - Tappa 10",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -341,6 +453,13 @@ int main()
     glViewport(0, 0, static_cast<GLsizei>(windowWidth), static_cast<GLsizei>(windowHeight));
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
+
+    sf::Font uiFont;
+    bool uiFontLoaded = loadUIFont(uiFont);
+    window.setView(sf::View(sf::FloatRect(
+        { 0.0f, 0.0f },
+        { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
+    )));
 
     GLuint shaderProgram = createShaderProgram();
 
@@ -562,7 +681,7 @@ int main()
                         printPlanetInfo(planets[selectedPlanetIndex]);
 
                         window.setTitle(
-                            "Sistema Solare 3D - Tappa 09 | Selezionato: " +
+                            "Sistema Solare 3D - Tappa 10 | Selezionato: " +
                             planets[selectedPlanetIndex].name
                         );
                     }
@@ -570,7 +689,7 @@ int main()
                     {
                         selectedPlanetIndex = -1;
                         std::cout << "\nNessun pianeta selezionato.\n";
-                        window.setTitle("Sistema Solare 3D - Tappa 09");
+                        window.setTitle("Sistema Solare 3D - Tappa 10");
                     }
                 }
             }
@@ -601,6 +720,11 @@ int main()
                     GL_FALSE,
                     glm::value_ptr(projection)
                 );
+
+                window.setView(sf::View(sf::FloatRect(
+                    { 0.0f, 0.0f },
+                    { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
+                )));
             }
         }
 
@@ -743,6 +867,18 @@ int main()
                 }
             );
         }
+
+        window.pushGLStates();
+        drawInfoPanel(
+            window,
+            uiFont,
+            uiFontLoaded,
+            planets,
+            selectedPlanetIndex,
+            windowWidth,
+            windowHeight
+        );
+        window.popGLStates();
 
         window.display();
     }
