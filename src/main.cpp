@@ -18,6 +18,7 @@ struct Vertex
 {
     glm::vec3 position;
     glm::vec3 normal;
+    glm::vec2 texCoord;
 };
 
 struct Planet
@@ -32,6 +33,7 @@ struct Planet
     float rotationSpeed;
 
     glm::vec3 color;
+    int textureIndex;
 };
 
 struct SunInfo
@@ -76,6 +78,7 @@ GLuint createShaderProgram()
 
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec3 aNormal;
+        layout (location = 2) in vec2 aTexCoord;
 
         uniform mat4 model;
         uniform mat4 view;
@@ -83,11 +86,13 @@ GLuint createShaderProgram()
 
         out vec3 FragPos;
         out vec3 Normal;
+        out vec2 TexCoord;
 
         void main()
         {
             FragPos = vec3(model * vec4(aPos, 1.0));
             Normal = mat3(transpose(inverse(model))) * aNormal;
+            TexCoord = aTexCoord;
             gl_Position = projection * view * model * vec4(aPos, 1.0);
         }
     )";
@@ -101,13 +106,27 @@ GLuint createShaderProgram()
         uniform vec3 lightPosition;
         uniform vec3 viewPosition;
         uniform int renderMode;
+        uniform int useTexture;
+        uniform sampler2D diffuseTexture;
 
         in vec3 FragPos;
         in vec3 Normal;
+        in vec2 TexCoord;
+
+        vec3 getBaseColor()
+        {
+            if (useTexture == 1)
+            {
+                return texture(diffuseTexture, TexCoord).rgb * objectColor;
+            }
+
+            return objectColor;
+        }
 
         void main()
         {
             vec3 normal = normalize(Normal);
+            vec3 baseColor = getBaseColor();
 
             // renderMode 0: oggetti piatti, usato per orbite e linee
             if (renderMode == 0)
@@ -117,15 +136,15 @@ GLuint createShaderProgram()
             }
 
             // renderMode 2: Sole con ombreggiatura fittizia per renderlo piu 3D,
-            // senza spegnerlo con la luce posta al centro della scena.
+            // mantenendo un aspetto luminoso e leggibile.
             if (renderMode == 2)
             {
                 vec3 viewDirection = normalize(viewPosition - FragPos);
                 float frontLight = max(dot(normal, viewDirection), 0.0);
                 float rim = pow(1.0 - frontLight, 2.0);
 
-                vec3 core = objectColor * (0.50 + 0.55 * frontLight);
-                vec3 warmGlow = vec3(1.0, 0.38, 0.04) * 0.22;
+                vec3 core = baseColor * (0.62 + 0.45 * frontLight);
+                vec3 warmGlow = vec3(1.0, 0.38, 0.04) * 0.20;
                 vec3 rimGlow = vec3(1.0, 0.55, 0.08) * rim * 0.35;
 
                 FragColor = vec4(core + warmGlow + rimGlow, 1.0);
@@ -139,12 +158,12 @@ GLuint createShaderProgram()
 
             float ambientStrength = 0.16;
             float diffuseStrength = max(dot(normal, lightDirection), 0.0);
-            float specularStrength = 0.35;
+            float specularStrength = 0.30;
             float shininess = 32.0;
             float specularFactor = pow(max(dot(viewDirection, reflectDirection), 0.0), shininess);
 
-            vec3 ambient = ambientStrength * objectColor;
-            vec3 diffuse = diffuseStrength * objectColor;
+            vec3 ambient = ambientStrength * baseColor;
+            vec3 diffuse = diffuseStrength * baseColor;
             vec3 specular = specularStrength * specularFactor * vec3(1.0);
 
             FragColor = vec4(ambient + diffuse + specular, 1.0);
@@ -198,8 +217,10 @@ void createSphere(
             float x = xy * std::cos(sectorAngle);
             float y = xy * std::sin(sectorAngle);
             glm::vec3 position(x, y, z);
+            float u = static_cast<float>(j) / static_cast<float>(sectorCount);
+            float v = static_cast<float>(i) / static_cast<float>(stackCount);
 
-            vertices.push_back({ position, glm::normalize(position) });
+            vertices.push_back({ position, glm::normalize(position), glm::vec2(u, v) });
         }
     }
 
@@ -241,6 +262,226 @@ void createOrbitCircle(std::vector<glm::vec3>& vertices, int segments)
     }
 }
 
+
+float pseudoNoise(float x, float y, float seed)
+{
+    float value = std::sin(x * 12.9898f + y * 78.233f + seed * 37.719f) * 43758.5453f;
+    return value - std::floor(value);
+}
+
+unsigned char toByte(float value)
+{
+    if (value < 0.0f)
+    {
+        value = 0.0f;
+    }
+
+    if (value > 1.0f)
+    {
+        value = 1.0f;
+    }
+
+    return static_cast<unsigned char>(value * 255.0f);
+}
+
+GLuint createProceduralTexture(int textureType)
+{
+    const int width = 256;
+    const int height = 128;
+    const float PI = 3.14159265359f;
+
+    std::vector<unsigned char> pixels(width * height * 3);
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            float u = static_cast<float>(x) / static_cast<float>(width - 1);
+            float v = static_cast<float>(y) / static_cast<float>(height - 1);
+            float n = pseudoNoise(u * 16.0f, v * 16.0f, static_cast<float>(textureType) + 1.0f);
+
+            glm::vec3 color(1.0f);
+
+            if (textureType == 0) // Sole
+            {
+                float bands = 0.5f + 0.5f * std::sin((u * 18.0f + v * 8.0f) * PI);
+                color = glm::vec3(
+                    1.0f,
+                    0.45f + 0.35f * bands,
+                    0.04f + 0.08f * n
+                );
+            }
+            else if (textureType == 1) // Mercurio
+            {
+                float shade = 0.35f + 0.35f * n;
+                color = glm::vec3(shade, shade, shade);
+            }
+            else if (textureType == 2) // Venere
+            {
+                float clouds = 0.5f + 0.5f * std::sin((u * 12.0f + v * 18.0f) * PI);
+                color = glm::vec3(
+                    0.85f + 0.12f * clouds,
+                    0.62f + 0.12f * n,
+                    0.30f + 0.10f * clouds
+                );
+            }
+            else if (textureType == 3) // Terra
+            {
+                float continents =
+                    std::sin(u * 24.0f * PI + std::sin(v * 9.0f * PI)) +
+                    std::cos(v * 15.0f * PI + u * 5.0f);
+
+                if (continents > 0.55f)
+                {
+                    color = glm::vec3(0.12f + 0.15f * n, 0.45f + 0.25f * n, 0.12f);
+                }
+                else if (continents > 0.25f)
+                {
+                    color = glm::vec3(0.65f, 0.58f, 0.30f);
+                }
+                else
+                {
+                    color = glm::vec3(0.05f, 0.20f + 0.10f * n, 0.75f + 0.15f * n);
+                }
+
+                if (pseudoNoise(u * 32.0f, v * 32.0f, 9.0f) > 0.84f)
+                {
+                    color = glm::vec3(0.90f, 0.94f, 1.0f);
+                }
+            }
+            else if (textureType == 4) // Marte
+            {
+                float shade = 0.45f + 0.25f * n;
+                color = glm::vec3(0.75f * shade + 0.20f, 0.22f * shade + 0.08f, 0.08f);
+            }
+            else if (textureType == 5) // Giove
+            {
+                float bands = 0.5f + 0.5f * std::sin(v * 34.0f * PI + n * 2.0f);
+                color = glm::mix(
+                    glm::vec3(0.72f, 0.48f, 0.30f),
+                    glm::vec3(0.95f, 0.82f, 0.60f),
+                    bands
+                );
+            }
+            else if (textureType == 6) // Saturno
+            {
+                float bands = 0.5f + 0.5f * std::sin(v * 26.0f * PI);
+                color = glm::mix(
+                    glm::vec3(0.75f, 0.58f, 0.34f),
+                    glm::vec3(0.98f, 0.86f, 0.55f),
+                    bands
+                );
+            }
+            else if (textureType == 7) // Urano
+            {
+                float bands = 0.5f + 0.5f * std::sin(v * 12.0f * PI);
+                color = glm::vec3(0.35f + 0.08f * bands, 0.78f + 0.12f * bands, 0.82f + 0.10f * n);
+            }
+            else if (textureType == 8) // Nettuno
+            {
+                float bands = 0.5f + 0.5f * std::sin((v * 16.0f + u * 2.0f) * PI);
+                color = glm::vec3(0.06f + 0.05f * n, 0.16f + 0.08f * bands, 0.70f + 0.20f * bands);
+            }
+
+            int offset = (y * width + x) * 3;
+            pixels[offset] = toByte(color.r);
+            pixels[offset + 1] = toByte(color.g);
+            pixels[offset + 2] = toByte(color.b);
+        }
+    }
+
+    GLuint textureID = 0;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGB,
+        width,
+        height,
+        0,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        pixels.data()
+    );
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return textureID;
+}
+
+
+GLuint loadTextureFromFile(const std::string& path, int fallbackTextureType)
+{
+    sf::Image image;
+
+    std::vector<std::string> candidatePaths = {
+        path,
+        "../" + path,
+        "../../" + path,
+        "../../../" + path
+    };
+
+    std::string loadedPath;
+
+    for (const std::string& candidatePath : candidatePaths)
+    {
+        if (image.loadFromFile(candidatePath))
+        {
+            loadedPath = candidatePath;
+            break;
+        }
+    }
+
+    if (loadedPath.empty())
+    {
+        std::cerr << "Impossibile caricare la texture: " << path
+                  << ". Uso texture procedurale di fallback.\n";
+        return createProceduralTexture(fallbackTextureType);
+    }
+
+   // image.flipVertically();
+
+    sf::Vector2u size = image.getSize();
+
+    GLuint textureID = 0;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    glTexImage2D(
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA,
+        static_cast<GLsizei>(size.x),
+        static_cast<GLsizei>(size.y),
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        image.getPixelsPtr()
+    );
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    std::cout << "Texture caricata: " << loadedPath << "\n";
+
+    return textureID;
+}
+
 void drawSphere(
     GLuint shaderProgram,
     GLuint VAO,
@@ -249,7 +490,9 @@ void drawSphere(
     const glm::vec3& color,
     const glm::vec3& lightPosition,
     const glm::vec3& viewPosition,
-    int renderMode
+    int renderMode,
+    GLuint textureID,
+    bool useTexture
 )
 {
     glUseProgram(shaderProgram);
@@ -259,16 +502,31 @@ void drawSphere(
     GLint lightPositionLocation = glGetUniformLocation(shaderProgram, "lightPosition");
     GLint viewPositionLocation = glGetUniformLocation(shaderProgram, "viewPosition");
     GLint renderModeLocation = glGetUniformLocation(shaderProgram, "renderMode");
+    GLint useTextureLocation = glGetUniformLocation(shaderProgram, "useTexture");
+    GLint diffuseTextureLocation = glGetUniformLocation(shaderProgram, "diffuseTexture");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
     glUniform3fv(lightPositionLocation, 1, glm::value_ptr(lightPosition));
     glUniform3fv(viewPositionLocation, 1, glm::value_ptr(viewPosition));
     glUniform1i(renderModeLocation, renderMode);
+    glUniform1i(useTextureLocation, useTexture ? 1 : 0);
+
+    if (useTexture)
+    {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glUniform1i(diffuseTextureLocation, 0);
+    }
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
+
+    if (useTexture)
+    {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 }
 
 void drawOrbit(
@@ -287,10 +545,12 @@ void drawOrbit(
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
     GLint renderModeLocation = glGetUniformLocation(shaderProgram, "renderMode");
+    GLint useTextureLocation = glGetUniformLocation(shaderProgram, "useTexture");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
     glUniform1i(renderModeLocation, 0);
+    glUniform1i(useTextureLocation, 0);
 
     glBindVertexArray(orbitVAO);
     glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
@@ -416,7 +676,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 14 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 15 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -727,7 +987,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 14",
+        "Sistema Solare 3D - Tappa 15",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -753,6 +1013,19 @@ int main()
     )));
 
     GLuint shaderProgram = createShaderProgram();
+
+    GLuint sunTexture = loadTextureFromFile("assets/textures/sun.jpg", 0);
+
+    std::vector<GLuint> planetTextures = {
+        loadTextureFromFile("assets/textures/mercury.jpg", 1), // Mercurio
+        loadTextureFromFile("assets/textures/venus.jpg", 2),   // Venere
+        loadTextureFromFile("assets/textures/earth.jpg", 3),   // Terra
+        loadTextureFromFile("assets/textures/mars.jpg", 4),    // Marte
+        loadTextureFromFile("assets/textures/jupiter.jpg", 5), // Giove
+        loadTextureFromFile("assets/textures/saturn.jpg", 6),  // Saturno
+        loadTextureFromFile("assets/textures/uranus.jpg", 7),  // Urano
+        loadTextureFromFile("assets/textures/neptune.jpg", 8)  // Nettuno
+    };
 
     std::vector<Vertex> sphereVertices;
     std::vector<unsigned int> sphereIndices;
@@ -804,6 +1077,16 @@ int main()
         reinterpret_cast<void*>(sizeof(glm::vec3))
     );
     glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(
+        2,
+        2,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        reinterpret_cast<void*>(sizeof(glm::vec3) * 2)
+    );
+    glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
 
@@ -868,7 +1151,8 @@ int main()
             0.22f,
             2.40f,
             2.00f,
-            glm::vec3(0.55f, 0.55f, 0.55f)
+            glm::vec3(0.55f, 0.55f, 0.55f),
+            0
         },
         {
             "Venere",
@@ -878,7 +1162,8 @@ int main()
             0.38f,
             1.85f,
             1.20f,
-            glm::vec3(0.95f, 0.72f, 0.35f)
+            glm::vec3(0.95f, 0.72f, 0.35f),
+            1
         },
         {
             "Terra",
@@ -888,7 +1173,8 @@ int main()
             0.42f,
             1.50f,
             3.00f,
-            glm::vec3(0.1f, 0.35f, 1.0f)
+            glm::vec3(0.1f, 0.35f, 1.0f),
+            2
         },
         {
             "Marte",
@@ -898,7 +1184,8 @@ int main()
             0.32f,
             1.20f,
             2.60f,
-            glm::vec3(0.9f, 0.25f, 0.1f)
+            glm::vec3(0.9f, 0.25f, 0.1f),
+            3
         },
         {
             "Giove",
@@ -908,7 +1195,8 @@ int main()
             0.90f,
             0.85f,
             3.50f,
-            glm::vec3(0.85f, 0.62f, 0.38f)
+            glm::vec3(0.85f, 0.62f, 0.38f),
+            4
         },
         {
             "Saturno",
@@ -918,7 +1206,8 @@ int main()
             0.78f,
             0.65f,
             3.20f,
-            glm::vec3(0.95f, 0.82f, 0.50f)
+            glm::vec3(0.95f, 0.82f, 0.50f),
+            5
         },
         {
             "Urano",
@@ -928,7 +1217,8 @@ int main()
             0.62f,
             0.48f,
             2.20f,
-            glm::vec3(0.45f, 0.85f, 0.85f)
+            glm::vec3(0.45f, 0.85f, 0.85f),
+            6
         },
         {
             "Nettuno",
@@ -938,7 +1228,8 @@ int main()
             0.60f,
             0.38f,
             2.00f,
-            glm::vec3(0.15f, 0.25f, 0.90f)
+            glm::vec3(0.15f, 0.25f, 0.90f),
+            7
         }
     };
 
@@ -1110,7 +1401,7 @@ int main()
                         );
 
                         printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 14 | Selezionato: Sole");
+                        window.setTitle("Sistema Solare 3D - Tappa 15 | Selezionato: Sole");
                     }
                     else
                     {
@@ -1150,7 +1441,7 @@ int main()
                                 previousCameraDistance
                             );
                             std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 14");
+                            window.setTitle("Sistema Solare 3D - Tappa 15");
                         }
                     }
                 }
@@ -1305,11 +1596,11 @@ int main()
         glm::mat4 sunModel = glm::mat4(1.0f);
         sunModel = glm::scale(sunModel, glm::vec3(sunInfo.size));
 
-        glm::vec3 sunColor = glm::vec3(1.0f, 0.75f, 0.05f);
+        glm::vec3 sunColor = glm::vec3(1.0f, 1.0f, 1.0f);
 
         if (isSunSelected)
         {
-            sunColor = glm::vec3(1.0f, 1.0f, 0.35f);
+            sunColor = glm::vec3(1.15f, 1.15f, 0.85f);
         }
 
         drawSphere(
@@ -1320,7 +1611,9 @@ int main()
             sunColor,
             lightPosition,
             cameraWorldPosition,
-            2
+            2,
+            sunTexture,
+            true
         );
 
         planetScreenInfos.clear();
@@ -1351,11 +1644,11 @@ int main()
 
             glm::mat4 planetModel = createPlanetModel(planet, simulationTime);
 
-            glm::vec3 color = planet.color;
+            glm::vec3 color = glm::vec3(1.0f);
 
             if (i == selectedPlanetIndex)
             {
-                color = glm::vec3(1.0f, 1.0f, 0.35f);
+                color = glm::vec3(1.20f, 1.20f, 0.75f);
             }
 
             drawSphere(
@@ -1366,7 +1659,9 @@ int main()
                 color,
                 lightPosition,
                 cameraWorldPosition,
-                1
+                1,
+                planetTextures[planet.textureIndex],
+                true
             );
 
             glm::vec4 planetCenterWorld = planetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -1425,6 +1720,13 @@ int main()
 
     glDeleteVertexArrays(1, &orbitVAO);
     glDeleteBuffers(1, &orbitVBO);
+
+    glDeleteTextures(1, &sunTexture);
+
+    for (GLuint textureID : planetTextures)
+    {
+        glDeleteTextures(1, &textureID);
+    }
 
     glDeleteProgram(shaderProgram);
 
