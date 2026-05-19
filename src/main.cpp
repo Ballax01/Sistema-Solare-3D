@@ -96,29 +96,58 @@ GLuint createShaderProgram()
         #version 410 core
 
         out vec4 FragColor;
+
         uniform vec3 objectColor;
         uniform vec3 lightPosition;
-        uniform bool useLighting;
+        uniform vec3 viewPosition;
+        uniform int renderMode;
 
         in vec3 FragPos;
         in vec3 Normal;
 
         void main()
         {
-            if (!useLighting)
+            vec3 normal = normalize(Normal);
+
+            // renderMode 0: oggetti piatti, usato per orbite e linee
+            if (renderMode == 0)
             {
                 FragColor = vec4(objectColor, 1.0);
                 return;
             }
 
-            vec3 normal = normalize(Normal);
+            // renderMode 2: Sole con ombreggiatura fittizia per renderlo piu 3D,
+            // senza spegnerlo con la luce posta al centro della scena.
+            if (renderMode == 2)
+            {
+                vec3 viewDirection = normalize(viewPosition - FragPos);
+                float frontLight = max(dot(normal, viewDirection), 0.0);
+                float rim = pow(1.0 - frontLight, 2.0);
+
+                vec3 core = objectColor * (0.50 + 0.55 * frontLight);
+                vec3 warmGlow = vec3(1.0, 0.38, 0.04) * 0.22;
+                vec3 rimGlow = vec3(1.0, 0.55, 0.08) * rim * 0.35;
+
+                FragColor = vec4(core + warmGlow + rimGlow, 1.0);
+                return;
+            }
+
+            // renderMode 1: illuminazione Phong completa per i pianeti
             vec3 lightDirection = normalize(lightPosition - FragPos);
+            vec3 viewDirection = normalize(viewPosition - FragPos);
+            vec3 reflectDirection = reflect(-lightDirection, normal);
 
+            float ambientStrength = 0.16;
             float diffuseStrength = max(dot(normal, lightDirection), 0.0);
-            vec3 ambient = 0.18 * objectColor;
-            vec3 diffuse = diffuseStrength * objectColor;
+            float specularStrength = 0.35;
+            float shininess = 32.0;
+            float specularFactor = pow(max(dot(viewDirection, reflectDirection), 0.0), shininess);
 
-            FragColor = vec4(ambient + diffuse, 1.0);
+            vec3 ambient = ambientStrength * objectColor;
+            vec3 diffuse = diffuseStrength * objectColor;
+            vec3 specular = specularStrength * specularFactor * vec3(1.0);
+
+            FragColor = vec4(ambient + diffuse + specular, 1.0);
         }
     )";
 
@@ -219,7 +248,8 @@ void drawSphere(
     const glm::mat4& model,
     const glm::vec3& color,
     const glm::vec3& lightPosition,
-    bool useLighting
+    const glm::vec3& viewPosition,
+    int renderMode
 )
 {
     glUseProgram(shaderProgram);
@@ -227,12 +257,14 @@ void drawSphere(
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
     GLint lightPositionLocation = glGetUniformLocation(shaderProgram, "lightPosition");
-    GLint useLightingLocation = glGetUniformLocation(shaderProgram, "useLighting");
+    GLint viewPositionLocation = glGetUniformLocation(shaderProgram, "viewPosition");
+    GLint renderModeLocation = glGetUniformLocation(shaderProgram, "renderMode");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
     glUniform3fv(lightPositionLocation, 1, glm::value_ptr(lightPosition));
-    glUniform1i(useLightingLocation, useLighting ? 1 : 0);
+    glUniform3fv(viewPositionLocation, 1, glm::value_ptr(viewPosition));
+    glUniform1i(renderModeLocation, renderMode);
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
@@ -254,11 +286,11 @@ void drawOrbit(
 
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
-    GLint useLightingLocation = glGetUniformLocation(shaderProgram, "useLighting");
+    GLint renderModeLocation = glGetUniformLocation(shaderProgram, "renderMode");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
-    glUniform1i(useLightingLocation, 0);
+    glUniform1i(renderModeLocation, 0);
 
     glBindVertexArray(orbitVAO);
     glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
@@ -384,7 +416,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 13 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 14 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -695,7 +727,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 13",
+        "Sistema Solare 3D - Tappa 14",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1078,7 +1110,7 @@ int main()
                         );
 
                         printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 13 | Selezionato: Sole");
+                        window.setTitle("Sistema Solare 3D - Tappa 14 | Selezionato: Sole");
                     }
                     else
                     {
@@ -1118,7 +1150,7 @@ int main()
                                 previousCameraDistance
                             );
                             std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 13");
+                            window.setTitle("Sistema Solare 3D - Tappa 14");
                         }
                     }
                 }
@@ -1234,6 +1266,12 @@ int main()
             cameraTarget = glm::vec3(selectedPlanetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         }
 
+        glm::vec3 cameraWorldPosition = cameraTarget + createCameraPosition(
+            cameraYaw,
+            cameraPitch,
+            cameraDistance
+        );
+
         glm::mat4 view = createCameraViewAroundTarget(
             cameraYaw,
             cameraPitch,
@@ -1281,7 +1319,8 @@ int main()
             sunModel,
             sunColor,
             lightPosition,
-            false
+            cameraWorldPosition,
+            2
         );
 
         planetScreenInfos.clear();
@@ -1326,7 +1365,8 @@ int main()
                 planetModel,
                 color,
                 lightPosition,
-                true
+                cameraWorldPosition,
+                1
             );
 
             glm::vec4 planetCenterWorld = planetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
