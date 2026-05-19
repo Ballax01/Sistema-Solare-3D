@@ -154,6 +154,21 @@ void createSphere(
     }
 }
 
+void createOrbitCircle(std::vector<glm::vec3>& vertices, int segments)
+{
+    const float PI = 3.14159265359f;
+
+    for (int i = 0; i < segments; ++i)
+    {
+        float angle = 2.0f * PI * static_cast<float>(i) / static_cast<float>(segments);
+
+        float x = std::cos(angle);
+        float y = std::sin(angle);
+
+        vertices.push_back(glm::vec3(x, y, 0.0f));
+    }
+}
+
 void drawSphere(
     GLuint shaderProgram,
     GLuint VAO,
@@ -172,6 +187,30 @@ void drawSphere(
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+}
+
+void drawOrbit(
+    GLuint shaderProgram,
+    GLuint orbitVAO,
+    int vertexCount,
+    float radius,
+    const glm::vec3& color
+)
+{
+    glUseProgram(shaderProgram);
+
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::scale(model, glm::vec3(radius, radius, 1.0f));
+
+    GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
+    GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
+
+    glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform3fv(colorLocation, 1, glm::value_ptr(color));
+
+    glBindVertexArray(orbitVAO);
+    glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
     glBindVertexArray(0);
 }
 
@@ -203,7 +242,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 07",
+        "Sistema Solare 3D - Tappa 08",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -260,6 +299,37 @@ int main()
         GL_FLOAT,
         GL_FALSE,
         sizeof(Vertex),
+        reinterpret_cast<void*>(0)
+    );
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+
+    std::vector<glm::vec3> orbitVertices;
+    createOrbitCircle(orbitVertices, 180);
+
+    GLuint orbitVAO = 0;
+    GLuint orbitVBO = 0;
+
+    glGenVertexArrays(1, &orbitVAO);
+    glGenBuffers(1, &orbitVBO);
+
+    glBindVertexArray(orbitVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, orbitVBO);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        orbitVertices.size() * sizeof(glm::vec3),
+        orbitVertices.data(),
+        GL_STATIC_DRAW
+    );
+
+    glVertexAttribPointer(
+        0,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(glm::vec3),
         reinterpret_cast<void*>(0)
     );
     glEnableVertexAttribArray(0);
@@ -473,6 +543,19 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glLineWidth(1.5f);
+
+        for (const Planet& planet : planets)
+        {
+            drawOrbit(
+                shaderProgram,
+                orbitVAO,
+                static_cast<int>(orbitVertices.size()),
+                planet.orbitRadius,
+                glm::vec3(0.35f, 0.35f, 0.45f)
+            );
+        }
+
         glm::mat4 sunModel = glm::mat4(1.0f);
         sunModel = glm::scale(sunModel, glm::vec3(1.35f));
 
@@ -525,6 +608,10 @@ int main()
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
+
+    glDeleteVertexArrays(1, &orbitVAO);
+    glDeleteBuffers(1, &orbitVBO);
+
     glDeleteProgram(shaderProgram);
 
     return 0;
