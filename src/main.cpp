@@ -240,6 +240,33 @@ glm::mat4 createCameraView(float yaw, float pitch, float distance)
     );
 }
 
+glm::vec3 createCameraPosition(float yaw, float pitch, float distance)
+{
+    float yawRad = glm::radians(yaw);
+    float pitchRad = glm::radians(pitch);
+
+    glm::vec3 cameraPosition;
+    cameraPosition.x = distance * std::cos(pitchRad) * std::sin(yawRad);
+    cameraPosition.y = -distance * std::cos(pitchRad) * std::cos(yawRad);
+    cameraPosition.z = distance * std::sin(pitchRad);
+
+    return cameraPosition;
+}
+
+glm::mat4 createCameraViewAroundTarget(
+    float yaw,
+    float pitch,
+    float distance,
+    const glm::vec3& target
+)
+{
+    return glm::lookAt(
+        target + createCameraPosition(yaw, pitch, distance),
+        target,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+}
+
 glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
 {
     glm::mat4 planetModel = glm::mat4(1.0f);
@@ -278,6 +305,103 @@ void printPlanetInfo(const Planet& planet)
     std::cout << "Distanza orbitale simulata: " << planet.orbitRadius << "\n";
     std::cout << "Dimensione simulata: " << planet.size << "\n";
     std::cout << "==============================\n";
+}
+
+void selectPlanet(
+    int planetIndex,
+    int& selectedPlanetIndex,
+    const std::vector<Planet>& planets,
+    sf::RenderWindow& window
+)
+{
+    if (planetIndex >= 0 && planetIndex < static_cast<int>(planets.size()))
+    {
+        selectedPlanetIndex = planetIndex;
+        printPlanetInfo(planets[selectedPlanetIndex]);
+
+        window.setTitle(
+            "Sistema Solare 3D - Tappa 11 | Selezionato: " +
+            planets[selectedPlanetIndex].name
+        );
+    }
+}
+
+void startFollowingSelectedPlanet(
+    int selectedPlanetIndex,
+    const std::vector<Planet>& planets,
+    bool& isFollowingPlanet,
+    float& cameraYaw,
+    float& cameraPitch,
+    float& cameraDistance,
+    float& previousCameraYaw,
+    float& previousCameraPitch,
+    float& previousCameraDistance
+)
+{
+    if (selectedPlanetIndex < 0 || selectedPlanetIndex >= static_cast<int>(planets.size()))
+    {
+        return;
+    }
+
+    if (!isFollowingPlanet)
+    {
+        previousCameraYaw = cameraYaw;
+        previousCameraPitch = cameraPitch;
+        previousCameraDistance = cameraDistance;
+    }
+
+    isFollowingPlanet = true;
+    cameraDistance = planets[selectedPlanetIndex].size * 5.0f + 2.6f;
+
+    if (cameraDistance < 4.0f)
+    {
+        cameraDistance = 4.0f;
+    }
+
+    if (cameraDistance > 8.0f)
+    {
+        cameraDistance = 8.0f;
+    }
+
+    std::cout << "Camera in inseguimento su " << planets[selectedPlanetIndex].name << ". Premi F per tornare alla vista precedente.\n";
+}
+
+void stopFollowingPlanet(
+    bool& isFollowingPlanet,
+    float& cameraYaw,
+    float& cameraPitch,
+    float& cameraDistance,
+    float previousCameraYaw,
+    float previousCameraPitch,
+    float previousCameraDistance
+)
+{
+    if (!isFollowingPlanet)
+    {
+        return;
+    }
+
+    isFollowingPlanet = false;
+    cameraYaw = previousCameraYaw;
+    cameraPitch = previousCameraPitch;
+    cameraDistance = previousCameraDistance;
+
+    std::cout << "Ritorno alla vista precedente.\n";
+}
+
+int planetIndexFromKey(sf::Keyboard::Key key)
+{
+    if (key >= sf::Keyboard::Key::Num1 && key <= sf::Keyboard::Key::Num8)
+    {
+        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Num1);
+    }
+
+    if (key >= sf::Keyboard::Key::Numpad1 && key <= sf::Keyboard::Key::Numpad8)
+    {
+        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Numpad1);
+    }
+
+    return -1;
 }
 
 std::string wrapText(const std::string& text, std::size_t maxLineLength)
@@ -390,6 +514,50 @@ void drawInfoPanel(
     window.draw(bodyText);
 }
 
+void drawControlsLegend(
+    sf::RenderWindow& window,
+    const sf::Font& font,
+    bool fontLoaded
+)
+{
+    if (!fontLoaded)
+    {
+        return;
+    }
+
+    const float x = 18.0f;
+    const float y = 18.0f;
+    const float width = 520.0f;
+    const float height = 106.0f;
+
+    sf::RectangleShape panel({ width, height });
+    panel.setPosition({ x, y });
+    panel.setFillColor(sf::Color(8, 12, 24, 190));
+    panel.setOutlineColor(sf::Color(95, 120, 170, 210));
+    panel.setOutlineThickness(1.0f);
+
+    window.draw(panel);
+
+    sf::Text titleText(font, "Comandi", 17);
+    titleText.setPosition({ x + 14.0f, y + 10.0f });
+    titleText.setFillColor(sf::Color(255, 232, 140));
+    titleText.setStyle(sf::Text::Bold);
+
+    sf::Text controlsText(
+        font,
+        "Frecce: ruota camera   W/S: zoom   SPACE: pausa   +/-: velocita\n"
+        "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
+        "F: esci follow   1-8: pianeti   ESC: esci",
+        14
+    );
+    controlsText.setPosition({ x + 14.0f, y + 38.0f });
+    controlsText.setFillColor(sf::Color(225, 232, 245));
+    controlsText.setLineSpacing(1.25f);
+
+    window.draw(titleText);
+    window.draw(controlsText);
+}
+
 int findClickedPlanet(
     int mouseX,
     int mouseY,
@@ -436,7 +604,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 10",
+        "Sistema Solare 3D - Tappa 11",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -641,6 +809,14 @@ int main()
     float cameraDistance = 22.0f;
 
     int selectedPlanetIndex = -1;
+    bool isPaused = false;
+    float timeScale = 1.0f;
+    bool showOrbits = true;
+    bool showInfoPanel = true;
+    bool isFollowingPlanet = false;
+    float previousCameraYaw = cameraYaw;
+    float previousCameraPitch = cameraPitch;
+    float previousCameraDistance = cameraDistance;
 
     std::vector<PlanetScreenInfo> planetScreenInfos;
 
@@ -663,6 +839,102 @@ int main()
                 {
                     window.close();
                 }
+
+                if (keyPressed->code == sf::Keyboard::Key::Space)
+                {
+                    isPaused = !isPaused;
+                    std::cout << (isPaused ? "Simulazione in pausa.\n" : "Simulazione ripresa.\n");
+                }
+
+                if (
+                    keyPressed->code == sf::Keyboard::Key::Add ||
+                    keyPressed->code == sf::Keyboard::Key::Equal
+                )
+                {
+                    timeScale += 0.25f;
+
+                    if (timeScale > 5.0f)
+                    {
+                        timeScale = 5.0f;
+                    }
+
+                    std::cout << "Velocita simulazione: " << timeScale << "x\n";
+                }
+
+                if (
+                    keyPressed->code == sf::Keyboard::Key::Subtract ||
+                    keyPressed->code == sf::Keyboard::Key::Hyphen
+                )
+                {
+                    timeScale -= 0.25f;
+
+                    if (timeScale < 0.25f)
+                    {
+                        timeScale = 0.25f;
+                    }
+
+                    std::cout << "Velocita simulazione: " << timeScale << "x\n";
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::R)
+                {
+                    isFollowingPlanet = false;
+                    cameraYaw = 0.0f;
+                    cameraPitch = 32.0f;
+                    cameraDistance = 22.0f;
+                    std::cout << "Camera ripristinata.\n";
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::T)
+                {
+                    simulationTime = 0.0f;
+                    timeScale = 1.0f;
+                    isPaused = false;
+                    std::cout << "Simulazione temporale ripristinata.\n";
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::F)
+                {
+                    stopFollowingPlanet(
+                        isFollowingPlanet,
+                        cameraYaw,
+                        cameraPitch,
+                        cameraDistance,
+                        previousCameraYaw,
+                        previousCameraPitch,
+                        previousCameraDistance
+                    );
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::O)
+                {
+                    showOrbits = !showOrbits;
+                    std::cout << (showOrbits ? "Orbite visibili.\n" : "Orbite nascoste.\n");
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::I)
+                {
+                    showInfoPanel = !showInfoPanel;
+                    std::cout << (showInfoPanel ? "Pannello informativo visibile.\n" : "Pannello informativo nascosto.\n");
+                }
+
+                int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
+
+                if (keyboardPlanetIndex != -1)
+                {
+                    selectPlanet(keyboardPlanetIndex, selectedPlanetIndex, planets, window);
+                    startFollowingSelectedPlanet(
+                        selectedPlanetIndex,
+                        planets,
+                        isFollowingPlanet,
+                        cameraYaw,
+                        cameraPitch,
+                        cameraDistance,
+                        previousCameraYaw,
+                        previousCameraPitch,
+                        previousCameraDistance
+                    );
+                }
             }
 
             if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>())
@@ -677,19 +949,33 @@ int main()
 
                     if (clickedIndex != -1)
                     {
-                        selectedPlanetIndex = clickedIndex;
-                        printPlanetInfo(planets[selectedPlanetIndex]);
-
-                        window.setTitle(
-                            "Sistema Solare 3D - Tappa 10 | Selezionato: " +
-                            planets[selectedPlanetIndex].name
+                        selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
+                        startFollowingSelectedPlanet(
+                            selectedPlanetIndex,
+                            planets,
+                            isFollowingPlanet,
+                            cameraYaw,
+                            cameraPitch,
+                            cameraDistance,
+                            previousCameraYaw,
+                            previousCameraPitch,
+                            previousCameraDistance
                         );
                     }
                     else
                     {
                         selectedPlanetIndex = -1;
+                        stopFollowingPlanet(
+                            isFollowingPlanet,
+                            cameraYaw,
+                            cameraPitch,
+                            cameraDistance,
+                            previousCameraYaw,
+                            previousCameraPitch,
+                            previousCameraDistance
+                        );
                         std::cout << "\nNessun pianeta selezionato.\n";
-                        window.setTitle("Sistema Solare 3D - Tappa 10");
+                        window.setTitle("Sistema Solare 3D - Tappa 11");
                     }
                 }
             }
@@ -771,19 +1057,45 @@ int main()
             cameraPitch = 5.0f;
         }
 
-        if (cameraDistance < 8.0f)
+        float minimumCameraDistance = isFollowingPlanet ? 3.5f : 8.0f;
+        float maximumCameraDistance = isFollowingPlanet ? 18.0f : 45.0f;
+
+        if (cameraDistance < minimumCameraDistance)
         {
-            cameraDistance = 8.0f;
+            cameraDistance = minimumCameraDistance;
         }
 
-        if (cameraDistance > 45.0f)
+        if (cameraDistance > maximumCameraDistance)
         {
-            cameraDistance = 45.0f;
+            cameraDistance = maximumCameraDistance;
         }
 
-        simulationTime += deltaTime;
+        if (!isPaused)
+        {
+            simulationTime += deltaTime * timeScale;
+        }
 
-        glm::mat4 view = createCameraView(cameraYaw, cameraPitch, cameraDistance);
+        glm::vec3 cameraTarget(0.0f, 0.0f, 0.0f);
+
+        if (
+            isFollowingPlanet &&
+            selectedPlanetIndex >= 0 &&
+            selectedPlanetIndex < static_cast<int>(planets.size())
+        )
+        {
+            glm::mat4 selectedPlanetModel = createPlanetModel(
+                planets[selectedPlanetIndex],
+                simulationTime
+            );
+            cameraTarget = glm::vec3(selectedPlanetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        }
+
+        glm::mat4 view = createCameraViewAroundTarget(
+            cameraYaw,
+            cameraPitch,
+            cameraDistance,
+            cameraTarget
+        );
 
         glUseProgram(shaderProgram);
         glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
@@ -792,15 +1104,18 @@ int main()
 
         glLineWidth(1.5f);
 
-        for (const Planet& planet : planets)
+        if (showOrbits)
         {
-            drawOrbit(
-                shaderProgram,
-                orbitVAO,
-                static_cast<int>(orbitVertices.size()),
-                planet.orbitRadius,
-                glm::vec3(0.35f, 0.35f, 0.45f)
-            );
+            for (const Planet& planet : planets)
+            {
+                drawOrbit(
+                    shaderProgram,
+                    orbitVAO,
+                    static_cast<int>(orbitVertices.size()),
+                    planet.orbitRadius,
+                    glm::vec3(0.35f, 0.35f, 0.45f)
+                );
+            }
         }
 
         glm::mat4 sunModel = glm::mat4(1.0f);
@@ -868,17 +1183,26 @@ int main()
             );
         }
 
-        window.pushGLStates();
-        drawInfoPanel(
-            window,
-            uiFont,
-            uiFontLoaded,
-            planets,
-            selectedPlanetIndex,
-            windowWidth,
-            windowHeight
-        );
-        window.popGLStates();
+        if (showInfoPanel)
+        {
+            window.pushGLStates();
+            drawControlsLegend(
+                window,
+                uiFont,
+                uiFontLoaded
+            );
+
+            drawInfoPanel(
+                window,
+                uiFont,
+                uiFontLoaded,
+                planets,
+                selectedPlanetIndex,
+                windowWidth,
+                windowHeight
+            );
+            window.popGLStates();
+        }
 
         window.display();
     }
