@@ -17,6 +17,7 @@
 struct Vertex
 {
     glm::vec3 position;
+    glm::vec3 normal;
 };
 
 struct Planet
@@ -66,13 +67,19 @@ GLuint createShaderProgram()
         #version 410 core
 
         layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec3 aNormal;
 
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
 
+        out vec3 FragPos;
+        out vec3 Normal;
+
         void main()
         {
+            FragPos = vec3(model * vec4(aPos, 1.0));
+            Normal = mat3(transpose(inverse(model))) * aNormal;
             gl_Position = projection * view * model * vec4(aPos, 1.0);
         }
     )";
@@ -82,10 +89,28 @@ GLuint createShaderProgram()
 
         out vec4 FragColor;
         uniform vec3 objectColor;
+        uniform vec3 lightPosition;
+        uniform bool useLighting;
+
+        in vec3 FragPos;
+        in vec3 Normal;
 
         void main()
         {
-            FragColor = vec4(objectColor, 1.0);
+            if (!useLighting)
+            {
+                FragColor = vec4(objectColor, 1.0);
+                return;
+            }
+
+            vec3 normal = normalize(Normal);
+            vec3 lightDirection = normalize(lightPosition - FragPos);
+
+            float diffuseStrength = max(dot(normal, lightDirection), 0.0);
+            vec3 ambient = 0.18 * objectColor;
+            vec3 diffuse = diffuseStrength * objectColor;
+
+            FragColor = vec4(ambient + diffuse, 1.0);
         }
     )";
 
@@ -135,8 +160,9 @@ void createSphere(
 
             float x = xy * std::cos(sectorAngle);
             float y = xy * std::sin(sectorAngle);
+            glm::vec3 position(x, y, z);
 
-            vertices.push_back({ glm::vec3(x, y, z) });
+            vertices.push_back({ position, glm::normalize(position) });
         }
     }
 
@@ -183,16 +209,22 @@ void drawSphere(
     GLuint VAO,
     unsigned int indexCount,
     const glm::mat4& model,
-    const glm::vec3& color
+    const glm::vec3& color,
+    const glm::vec3& lightPosition,
+    bool useLighting
 )
 {
     glUseProgram(shaderProgram);
 
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
+    GLint lightPositionLocation = glGetUniformLocation(shaderProgram, "lightPosition");
+    GLint useLightingLocation = glGetUniformLocation(shaderProgram, "useLighting");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
+    glUniform3fv(lightPositionLocation, 1, glm::value_ptr(lightPosition));
+    glUniform1i(useLightingLocation, useLighting ? 1 : 0);
 
     glBindVertexArray(VAO);
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
@@ -214,9 +246,11 @@ void drawOrbit(
 
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
+    GLint useLightingLocation = glGetUniformLocation(shaderProgram, "useLighting");
 
     glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
     glUniform3fv(colorLocation, 1, glm::value_ptr(color));
+    glUniform1i(useLightingLocation, 0);
 
     glBindVertexArray(orbitVAO);
     glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
@@ -320,7 +354,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 11 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 12 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -604,7 +638,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 11",
+        "Sistema Solare 3D - Tappa 12",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -671,6 +705,16 @@ int main()
         reinterpret_cast<void*>(0)
     );
     glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(
+        1,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        reinterpret_cast<void*>(sizeof(glm::vec3))
+    );
+    glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
 
@@ -975,7 +1019,7 @@ int main()
                             previousCameraDistance
                         );
                         std::cout << "\nNessun pianeta selezionato.\n";
-                        window.setTitle("Sistema Solare 3D - Tappa 11");
+                        window.setTitle("Sistema Solare 3D - Tappa 12");
                     }
                 }
             }
@@ -1118,6 +1162,8 @@ int main()
             }
         }
 
+        glm::vec3 lightPosition(0.0f, 0.0f, 0.0f);
+
         glm::mat4 sunModel = glm::mat4(1.0f);
         sunModel = glm::scale(sunModel, glm::vec3(1.35f));
 
@@ -1126,7 +1172,9 @@ int main()
             VAO,
             static_cast<unsigned int>(sphereIndices.size()),
             sunModel,
-            glm::vec3(1.0f, 0.75f, 0.05f)
+            glm::vec3(1.0f, 0.75f, 0.05f),
+            lightPosition,
+            false
         );
 
         planetScreenInfos.clear();
@@ -1156,7 +1204,9 @@ int main()
                 VAO,
                 static_cast<unsigned int>(sphereIndices.size()),
                 planetModel,
-                color
+                color,
+                lightPosition,
+                true
             );
 
             glm::vec4 planetCenterWorld = planetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
