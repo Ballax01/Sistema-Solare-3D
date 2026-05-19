@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iostream>
 #include <optional>
+#include <string>
 #include <vector>
 
 struct Vertex
@@ -18,10 +19,15 @@ struct Vertex
 
 struct Planet
 {
+    std::string name;
+    std::string type;
+    std::string description;
+
     float orbitRadius;
     float size;
     float orbitSpeed;
     float rotationSpeed;
+
     glm::vec3 color;
 };
 
@@ -197,7 +203,7 @@ int main()
 
     sf::Window window(
         sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 06",
+        "Sistema Solare 3D - Tappa 07",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -275,17 +281,93 @@ int main()
     glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, glm::value_ptr(projection));
 
     std::vector<Planet> planets = {
-        { 3.0f, 0.30f, 1.80f, 4.0f, glm::vec3(0.55f, 0.55f, 0.55f) },
-        { 4.5f, 0.45f, 1.20f, 3.0f, glm::vec3(0.1f, 0.35f, 1.0f) },
-        { 6.2f, 0.55f, 0.85f, 2.5f, glm::vec3(0.9f, 0.25f, 0.1f) },
-        { 8.0f, 0.75f, 0.55f, 2.0f, glm::vec3(0.85f, 0.65f, 0.35f) }
+        {
+            "Mercurio",
+            "Pianeta roccioso",
+            "Il pianeta più vicino al Sole e il più piccolo del Sistema Solare.",
+            2.4f,
+            0.22f,
+            2.40f,
+            2.00f,
+            glm::vec3(0.55f, 0.55f, 0.55f)
+        },
+        {
+            "Venere",
+            "Pianeta roccioso",
+            "Pianeta con atmosfera molto densa e temperature superficiali molto elevate.",
+            3.4f,
+            0.38f,
+            1.85f,
+            1.20f,
+            glm::vec3(0.95f, 0.72f, 0.35f)
+        },
+        {
+            "Terra",
+            "Pianeta roccioso",
+            "Unico pianeta noto a ospitare vita, con acqua liquida in superficie.",
+            4.5f,
+            0.42f,
+            1.50f,
+            3.00f,
+            glm::vec3(0.1f, 0.35f, 1.0f)
+        },
+        {
+            "Marte",
+            "Pianeta roccioso",
+            "Conosciuto come pianeta rosso per la presenza di ossidi di ferro sulla superficie.",
+            5.6f,
+            0.32f,
+            1.20f,
+            2.60f,
+            glm::vec3(0.9f, 0.25f, 0.1f)
+        },
+        {
+            "Giove",
+            "Gigante gassoso",
+            "Il pianeta più grande del Sistema Solare, caratterizzato da intense tempeste atmosferiche.",
+            7.4f,
+            0.90f,
+            0.85f,
+            3.50f,
+            glm::vec3(0.85f, 0.62f, 0.38f)
+        },
+        {
+            "Saturno",
+            "Gigante gassoso",
+            "Famoso per il suo grande sistema di anelli, che verrà aggiunto in una tappa successiva.",
+            9.4f,
+            0.78f,
+            0.65f,
+            3.20f,
+            glm::vec3(0.95f, 0.82f, 0.50f)
+        },
+        {
+            "Urano",
+            "Gigante ghiacciato",
+            "Pianeta dal colore azzurro-verde dovuto alla presenza di metano nell'atmosfera.",
+            11.2f,
+            0.62f,
+            0.48f,
+            2.20f,
+            glm::vec3(0.45f, 0.85f, 0.85f)
+        },
+        {
+            "Nettuno",
+            "Gigante ghiacciato",
+            "Il pianeta più lontano dal Sole, caratterizzato da venti molto intensi.",
+            13.0f,
+            0.60f,
+            0.38f,
+            2.00f,
+            glm::vec3(0.15f, 0.25f, 0.90f)
+        }
     };
 
     float simulationTime = 0.0f;
 
     float cameraYaw = 0.0f;
     float cameraPitch = 32.0f;
-    float cameraDistance = 14.0f;
+    float cameraDistance = 22.0f;
 
     sf::Clock clock;
 
@@ -330,7 +412,7 @@ int main()
         }
 
         float cameraRotationSpeed = 70.0f;
-        float cameraZoomSpeed = 8.0f;
+        float cameraZoomSpeed = 10.0f;
 
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
         {
@@ -372,14 +454,14 @@ int main()
             cameraPitch = 5.0f;
         }
 
-        if (cameraDistance < 5.0f)
+        if (cameraDistance < 8.0f)
         {
-            cameraDistance = 5.0f;
+            cameraDistance = 8.0f;
         }
 
-        if (cameraDistance > 30.0f)
+        if (cameraDistance > 45.0f)
         {
-            cameraDistance = 30.0f;
+            cameraDistance = 45.0f;
         }
 
         simulationTime += deltaTime;
@@ -392,7 +474,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glm::mat4 sunModel = glm::mat4(1.0f);
-        sunModel = glm::scale(sunModel, glm::vec3(1.4f));
+        sunModel = glm::scale(sunModel, glm::vec3(1.35f));
 
         drawSphere(
             shaderProgram,
