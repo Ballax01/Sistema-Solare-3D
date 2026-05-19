@@ -31,6 +31,14 @@ struct Planet
     glm::vec3 color;
 };
 
+struct PlanetScreenInfo
+{
+    int index;
+    float x;
+    float y;
+    float radius;
+};
+
 GLuint compileShader(GLenum type, const char* source)
 {
     GLuint shader = glCreateShader(type);
@@ -161,7 +169,6 @@ void createOrbitCircle(std::vector<glm::vec3>& vertices, int segments)
     for (int i = 0; i < segments; ++i)
     {
         float angle = 2.0f * PI * static_cast<float>(i) / static_cast<float>(segments);
-
         float x = std::cos(angle);
         float y = std::sin(angle);
 
@@ -231,8 +238,83 @@ glm::mat4 createCameraView(float yaw, float pitch, float distance)
     );
 }
 
+glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
+{
+    glm::mat4 planetModel = glm::mat4(1.0f);
+
+    planetModel = glm::rotate(
+        planetModel,
+        simulationTime * planet.orbitSpeed,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    planetModel = glm::translate(
+        planetModel,
+        glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
+    );
+
+    planetModel = glm::rotate(
+        planetModel,
+        simulationTime * planet.rotationSpeed,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    planetModel = glm::scale(
+        planetModel,
+        glm::vec3(planet.size)
+    );
+
+    return planetModel;
+}
+
+void printPlanetInfo(const Planet& planet)
+{
+    std::cout << "\n==============================\n";
+    std::cout << "Pianeta selezionato: " << planet.name << "\n";
+    std::cout << "Tipo: " << planet.type << "\n";
+    std::cout << "Descrizione: " << planet.description << "\n";
+    std::cout << "Distanza orbitale simulata: " << planet.orbitRadius << "\n";
+    std::cout << "Dimensione simulata: " << planet.size << "\n";
+    std::cout << "==============================\n";
+}
+
+int findClickedPlanet(
+    int mouseX,
+    int mouseY,
+    const std::vector<PlanetScreenInfo>& planetScreenInfos
+)
+{
+    int selectedIndex = -1;
+    float bestDistance = 1000000.0f;
+
+    for (const PlanetScreenInfo& info : planetScreenInfos)
+    {
+        float dx = static_cast<float>(mouseX) - info.x;
+        float dy = static_cast<float>(mouseY) - info.y;
+        float distance = std::sqrt(dx * dx + dy * dy);
+
+        float clickRadius = info.radius;
+
+        if (clickRadius < 18.0f)
+        {
+            clickRadius = 18.0f;
+        }
+
+        if (distance <= clickRadius && distance < bestDistance)
+        {
+            bestDistance = distance;
+            selectedIndex = info.index;
+        }
+    }
+
+    return selectedIndex;
+}
+
 int main()
 {
+    unsigned int windowWidth = 1280;
+    unsigned int windowHeight = 720;
+
     sf::ContextSettings settings;
     settings.depthBits = 24;
     settings.stencilBits = 8;
@@ -241,8 +323,8 @@ int main()
     settings.attributeFlags = sf::ContextSettings::Attribute::Core;
 
     sf::Window window(
-        sf::VideoMode({1280, 720}),
-        "Sistema Solare 3D - Tappa 08",
+        sf::VideoMode({windowWidth, windowHeight}),
+        "Sistema Solare 3D - Tappa 09",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -256,7 +338,7 @@ int main()
         return -1;
     }
 
-    glViewport(0, 0, 1280, 720);
+    glViewport(0, 0, static_cast<GLsizei>(windowWidth), static_cast<GLsizei>(windowHeight));
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
 
@@ -338,7 +420,7 @@ int main()
 
     glm::mat4 projection = glm::perspective(
         glm::radians(45.0f),
-        1280.0f / 720.0f,
+        static_cast<float>(windowWidth) / static_cast<float>(windowHeight),
         0.1f,
         100.0f
     );
@@ -439,6 +521,10 @@ int main()
     float cameraPitch = 32.0f;
     float cameraDistance = 22.0f;
 
+    int selectedPlanetIndex = -1;
+
+    std::vector<PlanetScreenInfo> planetScreenInfos;
+
     sf::Clock clock;
 
     while (window.isOpen())
@@ -460,13 +546,50 @@ int main()
                 }
             }
 
+            if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>())
+            {
+                if (mousePressed->button == sf::Mouse::Button::Left)
+                {
+                    int clickedIndex = findClickedPlanet(
+                        mousePressed->position.x,
+                        mousePressed->position.y,
+                        planetScreenInfos
+                    );
+
+                    if (clickedIndex != -1)
+                    {
+                        selectedPlanetIndex = clickedIndex;
+                        printPlanetInfo(planets[selectedPlanetIndex]);
+
+                        window.setTitle(
+                            "Sistema Solare 3D - Tappa 09 | Selezionato: " +
+                            planets[selectedPlanetIndex].name
+                        );
+                    }
+                    else
+                    {
+                        selectedPlanetIndex = -1;
+                        std::cout << "\nNessun pianeta selezionato.\n";
+                        window.setTitle("Sistema Solare 3D - Tappa 09");
+                    }
+                }
+            }
+
             if (const auto* resized = event->getIf<sf::Event::Resized>())
             {
-                glViewport(0, 0, resized->size.x, resized->size.y);
+                windowWidth = resized->size.x;
+                windowHeight = resized->size.y;
+
+                glViewport(
+                    0,
+                    0,
+                    static_cast<GLsizei>(windowWidth),
+                    static_cast<GLsizei>(windowHeight)
+                );
 
                 projection = glm::perspective(
                     glm::radians(45.0f),
-                    static_cast<float>(resized->size.x) / static_cast<float>(resized->size.y),
+                    static_cast<float>(windowWidth) / static_cast<float>(windowHeight),
                     0.1f,
                     100.0f
                 );
@@ -567,38 +690,57 @@ int main()
             glm::vec3(1.0f, 0.75f, 0.05f)
         );
 
-        for (const Planet& planet : planets)
+        planetScreenInfos.clear();
+
+        glm::vec4 viewport(
+            0.0f,
+            0.0f,
+            static_cast<float>(windowWidth),
+            static_cast<float>(windowHeight)
+        );
+
+        for (int i = 0; i < static_cast<int>(planets.size()); ++i)
         {
-            glm::mat4 planetModel = glm::mat4(1.0f);
+            const Planet& planet = planets[i];
 
-            planetModel = glm::rotate(
-                planetModel,
-                simulationTime * planet.orbitSpeed,
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            );
+            glm::mat4 planetModel = createPlanetModel(planet, simulationTime);
 
-            planetModel = glm::translate(
-                planetModel,
-                glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
-            );
+            glm::vec3 color = planet.color;
 
-            planetModel = glm::rotate(
-                planetModel,
-                simulationTime * planet.rotationSpeed,
-                glm::vec3(0.0f, 0.0f, 1.0f)
-            );
-
-            planetModel = glm::scale(
-                planetModel,
-                glm::vec3(planet.size)
-            );
+            if (i == selectedPlanetIndex)
+            {
+                color = glm::vec3(1.0f, 1.0f, 0.35f);
+            }
 
             drawSphere(
                 shaderProgram,
                 VAO,
                 static_cast<unsigned int>(sphereIndices.size()),
                 planetModel,
-                planet.color
+                color
+            );
+
+            glm::vec4 planetCenterWorld = planetModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+            glm::vec3 projectedCenter = glm::project(
+                glm::vec3(planetCenterWorld),
+                view,
+                projection,
+                viewport
+            );
+
+            float screenX = projectedCenter.x;
+            float screenY = static_cast<float>(windowHeight) - projectedCenter.y;
+
+            float approximateRadius = 20.0f + planet.size * 18.0f;
+
+            planetScreenInfos.push_back(
+                {
+                    i,
+                    screenX,
+                    screenY,
+                    approximateRadius
+                }
             );
         }
 
