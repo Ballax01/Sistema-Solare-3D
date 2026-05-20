@@ -157,6 +157,30 @@ GLuint createShaderProgram()
                 return;
             }
 
+            // renderMode 4: overlay semitrasparente illuminato dalla vista, usato per nuvole/atmosfere.
+            if (renderMode == 4)
+            {
+                vec4 textureColor = texture(diffuseTexture, TexCoord);
+                vec3 viewDirection = normalize(viewPosition - FragPos);
+                float facing = max(dot(normal, viewDirection), 0.0);
+                float brightness = max(max(textureColor.r, textureColor.g), textureColor.b);
+                float textureMask = smoothstep(0.08, 0.55, brightness);
+                float edgeFade = smoothstep(0.08, 0.55, facing);
+                float alpha = 0.28 * textureMask * edgeFade;
+                FragColor = vec4(textureColor.rgb * objectColor, alpha);
+                return;
+            }
+
+            // renderMode 5: texture emissiva tenue, usata per la night map terrestre.
+            if (renderMode == 5)
+            {
+                vec3 lightDirection = normalize(lightPosition - FragPos);
+                float nightFactor = pow(1.0 - max(dot(normal, lightDirection), 0.0), 1.45);
+                vec4 textureColor = texture(diffuseTexture, TexCoord);
+                FragColor = vec4(textureColor.rgb * objectColor * nightFactor * 1.35, nightFactor * 0.92);
+                return;
+            }
+
             // renderMode 2: Sole con ombreggiatura fittizia per renderlo piu 3D,
             // mantenendo un aspetto luminoso e leggibile.
             if (renderMode == 2)
@@ -1199,6 +1223,9 @@ int main()
     GLuint sunTexture = loadTextureFromFile("assets/textures/sun.jpg", 0);
     GLuint moonTexture = loadTextureFromFile("assets/textures/moon.jpg", 9);
     GLuint saturnRingTexture = loadTextureFromFile("assets/textures/saturn_ring.png", 6);
+    GLuint earthCloudsTexture = loadTextureFromFile("assets/textures/earth_clouds.jpg", 3);
+    GLuint earthNightTexture = loadTextureFromFile("assets/textures/earth_nightmap.jpg", 3);
+    GLuint venusAtmosphereTexture = loadTextureFromFile("assets/textures/venus_atmosphere.jpg", 2);
     std::vector<GLuint> planetTextures = {
         loadTextureFromFile("assets/textures/mercury.jpg", 1), // Mercurio
         loadTextureFromFile("assets/textures/venus.jpg", 2),   // Venere
@@ -1867,6 +1894,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glLineWidth(1.5f);
+        const int venusIndex = 1;
         const int earthIndex = 2;
         const int saturnIndex = 5;
 
@@ -1990,6 +2018,78 @@ int main()
             );
         }
 
+        glm::mat4 earthOverlayBase = createPlanetOrbitModel(planets[earthIndex], simulationTime);
+
+        glm::mat4 earthNightModel = glm::rotate(
+            earthOverlayBase,
+            simulationTime * planets[earthIndex].rotationSpeed,
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+        earthNightModel = glm::scale(
+            earthNightModel,
+            glm::vec3(planets[earthIndex].size * 1.006f)
+        );
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            earthNightModel,
+            glm::vec3(1.0f),
+            lightPosition,
+            cameraWorldPosition,
+            5,
+            earthNightTexture,
+            true
+        );
+
+        glm::mat4 earthCloudModel = glm::rotate(
+            earthOverlayBase,
+            simulationTime * (planets[earthIndex].rotationSpeed * 1.18f + 0.12f),
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+        earthCloudModel = glm::scale(
+            earthCloudModel,
+            glm::vec3(planets[earthIndex].size * 1.018f)
+        );
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            earthCloudModel,
+            glm::vec3(0.95f, 0.98f, 1.0f),
+            lightPosition,
+            cameraWorldPosition,
+            4,
+            earthCloudsTexture,
+            true
+        );
+
+        glm::mat4 venusAtmosphereModel = createPlanetOrbitModel(planets[venusIndex], simulationTime);
+        venusAtmosphereModel = glm::rotate(
+            venusAtmosphereModel,
+            simulationTime * (planets[venusIndex].rotationSpeed * 0.72f + 0.18f),
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+        venusAtmosphereModel = glm::scale(
+            venusAtmosphereModel,
+            glm::vec3(planets[venusIndex].size * 1.022f)
+        );
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            venusAtmosphereModel,
+            glm::vec3(1.0f, 0.82f, 0.55f),
+            lightPosition,
+            cameraWorldPosition,
+            4,
+            venusAtmosphereTexture,
+            true
+        );
+
         glm::mat4 saturnRingModel = createPlanetOrbitModel(planets[saturnIndex], simulationTime);
         saturnRingModel = glm::rotate(
             saturnRingModel,
@@ -2086,6 +2186,9 @@ int main()
     glDeleteTextures(1, &sunTexture);
     glDeleteTextures(1, &moonTexture);
     glDeleteTextures(1, &saturnRingTexture);
+    glDeleteTextures(1, &earthCloudsTexture);
+    glDeleteTextures(1, &earthNightTexture);
+    glDeleteTextures(1, &venusAtmosphereTexture);
     for (GLuint textureID : planetTextures)
     {
         glDeleteTextures(1, &textureID);
