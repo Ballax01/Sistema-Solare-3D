@@ -27,6 +27,8 @@ struct Planet
     std::string type;
     std::string description;
 
+    float realDistanceAU;
+    float realDiameterKm;
     float orbitRadius;
     float orbitEccentricity;
     float size;
@@ -822,12 +824,25 @@ std::string formatSimulationValue(float value, const std::string& unit)
     return stream.str();
 }
 
+std::string formatRealValue(float value, const std::string& unit, int precision)
+{
+    std::ostringstream stream;
+    stream.setf(std::ios::fixed);
+    stream.precision(precision);
+    stream << value << " " << unit;
+    return stream.str();
+}
+
 void printPlanetInfo(const Planet& planet)
 {
     std::cout << "\n==============================\n";
     std::cout << "Pianeta selezionato: " << planet.name << "\n";
     std::cout << "Tipo: " << planet.type << "\n";
     std::cout << "Descrizione: " << planet.description << "\n";
+    std::cout << "Distanza media reale dal Sole: "
+              << formatRealValue(planet.realDistanceAU, "UA", 3) << "\n";
+    std::cout << "Diametro reale: "
+              << formatRealValue(planet.realDiameterKm, "km", 0) << "\n";
     std::cout << "Distanza orbitale simulata: "
               << formatSimulationValue(planet.orbitRadius, "unita scena") << "\n";
     std::cout << "Scala dimensione: "
@@ -872,7 +887,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 19 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 20 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -941,16 +956,49 @@ void stopFollowingPlanet(
     std::cout << "Ritorno alla vista precedente.\n";
 }
 
-int planetIndexFromKey(sf::Keyboard::Key key)
+void selectSun(
+    int& selectedPlanetIndex,
+    bool& isSunSelected,
+    bool& isMoonSelected,
+    bool& isFollowingPlanet,
+    float& cameraYaw,
+    float& cameraPitch,
+    float& cameraDistance,
+    float& previousCameraYaw,
+    float& previousCameraPitch,
+    float& previousCameraDistance,
+    const SunInfo& sunInfo,
+    sf::RenderWindow& window
+)
 {
-    if (key >= sf::Keyboard::Key::Num1 && key <= sf::Keyboard::Key::Num8)
+    selectedPlanetIndex = -1;
+    isSunSelected = true;
+    isMoonSelected = false;
+
+    stopFollowingPlanet(
+        isFollowingPlanet,
+        cameraYaw,
+        cameraPitch,
+        cameraDistance,
+        previousCameraYaw,
+        previousCameraPitch,
+        previousCameraDistance
+    );
+
+    printSunInfo(sunInfo);
+    window.setTitle("Sistema Solare 3D - Tappa 20 | Selezionato: Sole");
+}
+
+int numberFromKey(sf::Keyboard::Key key)
+{
+    if (key >= sf::Keyboard::Key::Num1 && key <= sf::Keyboard::Key::Num9)
     {
-        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Num1);
+        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Num1) + 1;
     }
 
-    if (key >= sf::Keyboard::Key::Numpad1 && key <= sf::Keyboard::Key::Numpad8)
+    if (key >= sf::Keyboard::Key::Numpad1 && key <= sf::Keyboard::Key::Numpad9)
     {
-        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Numpad1);
+        return static_cast<int>(key) - static_cast<int>(sf::Keyboard::Key::Numpad1) + 1;
     }
 
     return -1;
@@ -1022,25 +1070,31 @@ void drawInfoPanel(
         return;
     }
 
-    float panelWidth = 360.0f;
+    float panelWidth = 460.0f;
 
-    if (windowWidth < 520)
+    if (windowWidth < 620)
     {
         panelWidth = static_cast<float>(windowWidth) - 32.0f;
     }
 
-    const float panelHeight = 196.0f;
+    const float panelHeight = 244.0f;
     const float margin = 18.0f;
     const float x = margin;
     const float y = static_cast<float>(windowHeight) - panelHeight - margin;
 
     sf::RectangleShape panel({ panelWidth, panelHeight });
     panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 220));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 230));
+    panel.setFillColor(sf::Color(6, 10, 20, 232));
+    panel.setOutlineColor(sf::Color(120, 148, 205, 235));
     panel.setOutlineThickness(1.0f);
 
     window.draw(panel);
+
+    sf::RectangleShape accent({ 4.0f, panelHeight - 24.0f });
+    accent.setPosition({ x + 10.0f, y + 12.0f });
+    accent.setFillColor(sf::Color(255, 208, 96, 210));
+
+    window.draw(accent);
 
     std::string title = "Nessun corpo selezionato";
     std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
@@ -1071,21 +1125,25 @@ void drawInfoPanel(
         const Planet& planet = planets[selectedPlanetIndex];
         title = planet.name;
         body =
-            "Tipo: " + planet.type + "\n" +
-            wrapText(planet.description, maxLineLength) + "\n" +
-            "Distanza orbitale simulata: " + formatSimulationValue(planet.orbitRadius, "unita scena") + "\n" +
-            "Scala dimensione: " + formatSimulationValue(planet.size, "fattore scala");
+            std::string("Caratteristiche principali:\n") +
+            "- Tipo: " + planet.type + "\n" +
+            "- Distanza reale: " + formatRealValue(planet.realDistanceAU, "UA", 3) + "\n" +
+            "- Diametro reale: " + formatRealValue(planet.realDiameterKm, "km", 0) + "\n" +
+            "- Scala scena: " + formatSimulationValue(planet.orbitRadius, "unita") + " / " +
+                formatSimulationValue(planet.size, "raggio") + "\n" +
+            "- Eccentricita: " + formatSimulationValue(planet.orbitEccentricity, "simulata") + "\n" +
+            "Descrizione: " + wrapText(planet.description, maxLineLength);
     }
 
-    sf::Text titleText(font, title, 22);
-    titleText.setPosition({ x + 18.0f, y + 16.0f });
+    sf::Text titleText(font, title, 23);
+    titleText.setPosition({ x + 24.0f, y + 14.0f });
     titleText.setFillColor(sf::Color(255, 232, 140));
     titleText.setStyle(sf::Text::Bold);
 
-    sf::Text bodyText(font, body, 16);
-    bodyText.setPosition({ x + 18.0f, y + 52.0f });
+    sf::Text bodyText(font, body, 14);
+    bodyText.setPosition({ x + 24.0f, y + 52.0f });
     bodyText.setFillColor(sf::Color(225, 232, 245));
-    bodyText.setLineSpacing(1.18f);
+    bodyText.setLineSpacing(1.08f);
 
     window.draw(titleText);
     window.draw(bodyText);
@@ -1122,9 +1180,9 @@ void drawControlsLegend(
 
     sf::Text controlsText(
         font,
-        "Frecce: ruota camera   W/S: zoom   SPACE: pausa   +/-: velocita\n"
+        "Mouse: trascina camera   rotella: zoom   SPACE: pausa   +/-: velocita\n"
         "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "F: esci follow   1-8: pianeti   click: Sole/pianeti   ESC: esci",
+        "A/D: ruota camera   W/S: zoom   F: esci follow   1: Sole   2-9: pianeti   ESC: esci",
         14
     );
     controlsText.setPosition({ x + 14.0f, y + 38.0f });
@@ -1180,6 +1238,105 @@ bool isClickOnScreenInfo(
     return distance <= screenInfo.radius;
 }
 
+void handleCelestialBodyClick(
+    int mouseX,
+    int mouseY,
+    PlanetScreenInfo& sunScreenInfo,
+    PlanetScreenInfo& moonScreenInfo,
+    const std::vector<PlanetScreenInfo>& planetScreenInfos,
+    const SunInfo& sunInfo,
+    const MoonInfo& moonInfo,
+    const std::vector<Planet>& planets,
+    int& selectedPlanetIndex,
+    bool& isSunSelected,
+    bool& isMoonSelected,
+    bool& isFollowingPlanet,
+    float& cameraYaw,
+    float& cameraPitch,
+    float& cameraDistance,
+    float& previousCameraYaw,
+    float& previousCameraPitch,
+    float& previousCameraDistance,
+    sf::RenderWindow& window
+)
+{
+    if (isClickOnScreenInfo(mouseX, mouseY, sunScreenInfo))
+    {
+        selectSun(
+            selectedPlanetIndex,
+            isSunSelected,
+            isMoonSelected,
+            isFollowingPlanet,
+            cameraYaw,
+            cameraPitch,
+            cameraDistance,
+            previousCameraYaw,
+            previousCameraPitch,
+            previousCameraDistance,
+            sunInfo,
+            window
+        );
+        return;
+    }
+
+    if (isClickOnScreenInfo(mouseX, mouseY, moonScreenInfo))
+    {
+        selectedPlanetIndex = -1;
+        isSunSelected = false;
+        isMoonSelected = true;
+
+        stopFollowingPlanet(
+            isFollowingPlanet,
+            cameraYaw,
+            cameraPitch,
+            cameraDistance,
+            previousCameraYaw,
+            previousCameraPitch,
+            previousCameraDistance
+        );
+
+        printMoonInfo(moonInfo);
+        window.setTitle("Sistema Solare 3D - Tappa 20 | Selezionato: Luna");
+        return;
+    }
+
+    int clickedIndex = findClickedPlanet(mouseX, mouseY, planetScreenInfos);
+
+    if (clickedIndex != -1)
+    {
+        isSunSelected = false;
+        isMoonSelected = false;
+        selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
+        startFollowingSelectedPlanet(
+            selectedPlanetIndex,
+            planets,
+            isFollowingPlanet,
+            cameraYaw,
+            cameraPitch,
+            cameraDistance,
+            previousCameraYaw,
+            previousCameraPitch,
+            previousCameraDistance
+        );
+        return;
+    }
+
+    selectedPlanetIndex = -1;
+    isSunSelected = false;
+    isMoonSelected = false;
+    stopFollowingPlanet(
+        isFollowingPlanet,
+        cameraYaw,
+        cameraPitch,
+        cameraDistance,
+        previousCameraYaw,
+        previousCameraPitch,
+        previousCameraDistance
+    );
+    std::cout << "\nNessun corpo celeste selezionato.\n";
+    window.setTitle("Sistema Solare 3D - Tappa 20");
+}
+
 int main()
 {
     unsigned int windowWidth = 1280;
@@ -1194,7 +1351,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 19",
+        "Sistema Solare 3D - Tappa 20",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1433,8 +1590,10 @@ int main()
         {
             "Mercurio",
             "Pianeta roccioso",
-            "Il pianeta piu vicino al Sole e il piu piccolo del Sistema Solare.",
-            2.85f,
+            "Piccolo, roccioso e quasi privo di atmosfera, passa da temperature estreme tra giorno e notte.",
+            0.387f,
+            4879.0f,
+            3.05f,
             0.16f,
             0.22f,
             2.40f,
@@ -1445,8 +1604,10 @@ int main()
         {
             "Venere",
             "Pianeta roccioso",
-            "Pianeta con atmosfera molto densa e temperature superficiali molto elevate.",
-            3.75f,
+            "Ha un'atmosfera densissima ricca di anidride carbonica e nubi che intrappolano calore.",
+            0.723f,
+            12104.0f,
+            4.05f,
             0.02f,
             0.38f,
             1.85f,
@@ -1457,8 +1618,10 @@ int main()
         {
             "Terra",
             "Pianeta roccioso",
-            "Unico pianeta noto a ospitare vita, con acqua liquida in superficie.",
-            4.75f,
+            "Ospita oceani, atmosfera respirabile e una magnetosfera che contribuisce a proteggerla.",
+            1.000f,
+            12742.0f,
+            5.10f,
             0.03f,
             0.42f,
             1.50f,
@@ -1469,8 +1632,10 @@ int main()
         {
             "Marte",
             "Pianeta roccioso",
-            "Conosciuto come pianeta rosso per la presenza di ossidi di ferro sulla superficie.",
-            6.15f,
+            "Il colore rosso deriva dagli ossidi di ferro; conserva tracce di antichi fiumi e vulcani enormi.",
+            1.524f,
+            6779.0f,
+            6.55f,
             0.09f,
             0.32f,
             1.20f,
@@ -1481,7 +1646,9 @@ int main()
         {
             "Giove",
             "Gigante gassoso",
-            "Il pianeta piu grande del Sistema Solare, caratterizzato da intense tempeste atmosferiche.",
+            "Gigante dominato da idrogeno ed elio, con bande atmosferiche e tempeste persistenti.",
+            5.203f,
+            139820.0f,
             9.10f,
             0.05f,
             0.90f,
@@ -1493,7 +1660,9 @@ int main()
         {
             "Saturno",
             "Gigante gassoso",
-            "Famoso per il suo grande sistema di anelli, che verra aggiunto in una tappa successiva.",
+            "Celebre per il sistema di anelli ghiacciati e per la bassa densita media.",
+            9.537f,
+            116460.0f,
             13.00f,
             0.06f,
             0.78f,
@@ -1505,7 +1674,9 @@ int main()
         {
             "Urano",
             "Gigante ghiacciato",
-            "Pianeta dal colore azzurro-verde dovuto alla presenza di metano nell'atmosfera.",
+            "Il metano gli dona il colore azzurro-verde; il suo asse e inclinato in modo estremo.",
+            19.191f,
+            50724.0f,
             20.80f,
             0.08f,
             0.62f,
@@ -1517,7 +1688,9 @@ int main()
         {
             "Nettuno",
             "Gigante ghiacciato",
-            "Il pianeta piu lontano dal Sole, caratterizzato da venti molto intensi.",
+            "Mondo blu e freddo, con venti tra i piu rapidi osservati nel Sistema Solare.",
+            30.070f,
+            49244.0f,
             30.50f,
             0.02f,
             0.60f,
@@ -1538,10 +1711,15 @@ int main()
     bool isSunSelected = false;
     bool isMoonSelected = false;
     bool isPaused = false;
-    float timeScale = 1.0f;
+    const float defaultTimeScale = 0.45f;
+    float timeScale = defaultTimeScale;
     bool showOrbits = true;
     bool showInfoPanel = true;
     bool isFollowingPlanet = false;
+    bool isMouseDragging = false;
+    bool hasMouseDragged = false;
+    sf::Vector2i mousePressPosition;
+    sf::Vector2i previousMousePosition;
     float previousCameraYaw = cameraYaw;
     float previousCameraPitch = cameraPitch;
     float previousCameraDistance = cameraDistance;
@@ -1630,7 +1808,7 @@ int main()
                 if (keyPressed->code == sf::Keyboard::Key::T)
                 {
                     simulationTime = 0.0f;
-                    timeScale = 1.0f;
+                    timeScale = defaultTimeScale;
                     isPaused = false;
                     std::cout << "Simulazione temporale ripristinata.\n";
                 }
@@ -1660,10 +1838,28 @@ int main()
                     std::cout << (showInfoPanel ? "Pannello informativo visibile.\n" : "Pannello informativo nascosto.\n");
                 }
 
-                int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
+                int keyboardSelectionNumber = numberFromKey(keyPressed->code);
 
-                if (keyboardPlanetIndex != -1)
+                if (keyboardSelectionNumber == 1)
                 {
+                    selectSun(
+                        selectedPlanetIndex,
+                        isSunSelected,
+                        isMoonSelected,
+                        isFollowingPlanet,
+                        cameraYaw,
+                        cameraPitch,
+                        cameraDistance,
+                        previousCameraYaw,
+                        previousCameraPitch,
+                        previousCameraDistance,
+                        sunInfo,
+                        window
+                    );
+                }
+                else if (keyboardSelectionNumber >= 2 && keyboardSelectionNumber <= 9)
+                {
+                    int keyboardPlanetIndex = keyboardSelectionNumber - 2;
                     isSunSelected = false;
                     isMoonSelected = false;
                     selectPlanet(keyboardPlanetIndex, selectedPlanetIndex, planets, window);
@@ -1685,95 +1881,73 @@ int main()
             {
                 if (mousePressed->button == sf::Mouse::Button::Left)
                 {
-                    if (isClickOnScreenInfo(
-                            mousePressed->position.x,
-                            mousePressed->position.y,
-                            sunScreenInfo
-                        ))
-                    {
-                        selectedPlanetIndex = -1;
-                        isSunSelected = true;
-                        isMoonSelected = false;
+                    isMouseDragging = true;
+                    hasMouseDragged = false;
+                    mousePressPosition = mousePressed->position;
+                    previousMousePosition = mousePressed->position;
+                }
+            }
 
-                        stopFollowingPlanet(
+            if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>())
+            {
+                if (isMouseDragging)
+                {
+                    sf::Vector2i currentPosition = mouseMoved->position;
+                    sf::Vector2i delta = currentPosition - previousMousePosition;
+                    sf::Vector2i totalDelta = currentPosition - mousePressPosition;
+
+                    if (
+                        std::abs(totalDelta.x) > 4 ||
+                        std::abs(totalDelta.y) > 4
+                    )
+                    {
+                        hasMouseDragged = true;
+                    }
+
+                    cameraYaw += static_cast<float>(delta.x) * 0.28f;
+                    cameraPitch += static_cast<float>(delta.y) * 0.22f;
+                    previousMousePosition = currentPosition;
+                }
+            }
+
+            if (const auto* mouseReleased = event->getIf<sf::Event::MouseButtonReleased>())
+            {
+                if (mouseReleased->button == sf::Mouse::Button::Left)
+                {
+                    isMouseDragging = false;
+
+                    if (!hasMouseDragged)
+                    {
+                        handleCelestialBodyClick(
+                            mouseReleased->position.x,
+                            mouseReleased->position.y,
+                            sunScreenInfo,
+                            moonScreenInfo,
+                            planetScreenInfos,
+                            sunInfo,
+                            moonInfo,
+                            planets,
+                            selectedPlanetIndex,
+                            isSunSelected,
+                            isMoonSelected,
                             isFollowingPlanet,
                             cameraYaw,
                             cameraPitch,
                             cameraDistance,
                             previousCameraYaw,
                             previousCameraPitch,
-                            previousCameraDistance
+                            previousCameraDistance,
+                            window
                         );
-
-                        printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 19 | Selezionato: Sole");
                     }
-                    else if (isClickOnScreenInfo(
-                            mousePressed->position.x,
-                            mousePressed->position.y,
-                            moonScreenInfo
-                        ))
-                    {
-                        selectedPlanetIndex = -1;
-                        isSunSelected = false;
-                        isMoonSelected = true;
+                }
+            }
 
-                        stopFollowingPlanet(
-                            isFollowingPlanet,
-                            cameraYaw,
-                            cameraPitch,
-                            cameraDistance,
-                            previousCameraYaw,
-                            previousCameraPitch,
-                            previousCameraDistance
-                        );
-
-                        printMoonInfo(moonInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 19 | Selezionato: Luna");
-                    }
-                    else
-                    {
-                        int clickedIndex = findClickedPlanet(
-                            mousePressed->position.x,
-                            mousePressed->position.y,
-                            planetScreenInfos
-                        );
-
-                        if (clickedIndex != -1)
-                        {
-                            isSunSelected = false;
-                            isMoonSelected = false;
-                            selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
-                            startFollowingSelectedPlanet(
-                                selectedPlanetIndex,
-                                planets,
-                                isFollowingPlanet,
-                                cameraYaw,
-                                cameraPitch,
-                                cameraDistance,
-                                previousCameraYaw,
-                                previousCameraPitch,
-                                previousCameraDistance
-                            );
-                        }
-                        else
-                        {
-                            selectedPlanetIndex = -1;
-                            isSunSelected = false;
-                            isMoonSelected = false;
-                            stopFollowingPlanet(
-                                isFollowingPlanet,
-                                cameraYaw,
-                                cameraPitch,
-                                cameraDistance,
-                                previousCameraYaw,
-                                previousCameraPitch,
-                                previousCameraDistance
-                            );
-                            std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 19");
-                        }
-                    }
+            if (const auto* mouseWheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>())
+            {
+                if (mouseWheelScrolled->wheel == sf::Mouse::Wheel::Vertical)
+                {
+                    cameraDistance -= mouseWheelScrolled->delta * 1.4f;
                 }
             }
 
@@ -1814,12 +1988,12 @@ int main()
         float cameraRotationSpeed = 70.0f;
         float cameraZoomSpeed = 10.0f;
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
         {
             cameraYaw -= cameraRotationSpeed * deltaTime;
         }
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Right))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
         {
             cameraYaw += cameraRotationSpeed * deltaTime;
         }
