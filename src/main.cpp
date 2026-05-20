@@ -28,6 +28,7 @@ struct Planet
     std::string description;
 
     float orbitRadius;
+    float orbitEccentricity;
     float size;
     float orbitSpeed;
     float rotationSpeed;
@@ -154,6 +155,14 @@ GLuint createShaderProgram()
             {
                 vec4 textureColor = texture(diffuseTexture, TexCoord);
                 FragColor = vec4(textureColor.rgb * objectColor, textureColor.a);
+                return;
+            }
+
+            // renderMode 6: sfondo stellato non illuminato.
+            if (renderMode == 6)
+            {
+                vec3 starColor = texture(diffuseTexture, TexCoord).rgb;
+                FragColor = vec4(starColor * objectColor, 1.0);
                 return;
             }
 
@@ -638,13 +647,17 @@ void drawOrbit(
     GLuint orbitVAO,
     int vertexCount,
     float radius,
+    float eccentricity,
     const glm::vec3& color
 )
 {
     glUseProgram(shaderProgram);
 
+    float semiMinorAxis = radius * std::sqrt(1.0f - eccentricity * eccentricity);
+
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::scale(model, glm::vec3(radius, radius, 1.0f));
+    model = glm::translate(model, glm::vec3(-radius * eccentricity, 0.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(radius, semiMinorAxis, 1.0f));
 
     GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
     GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
@@ -730,20 +743,28 @@ glm::mat4 createCameraViewAroundTarget(
     );
 }
 
+glm::mat4 createPlanetOrbitModel(const Planet& planet, float simulationTime)
+{
+    float angle = simulationTime * planet.orbitSpeed;
+    float semiMinorAxis = planet.orbitRadius * std::sqrt(
+        1.0f - planet.orbitEccentricity * planet.orbitEccentricity
+    );
+
+    glm::vec3 orbitPosition(
+        planet.orbitRadius * (std::cos(angle) - planet.orbitEccentricity),
+        semiMinorAxis * std::sin(angle),
+        0.0f
+    );
+
+    glm::mat4 orbitModel = glm::mat4(1.0f);
+    orbitModel = glm::translate(orbitModel, orbitPosition);
+
+    return orbitModel;
+}
+
 glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
 {
-    glm::mat4 planetModel = glm::mat4(1.0f);
-
-    planetModel = glm::rotate(
-        planetModel,
-        simulationTime * planet.orbitSpeed,
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-
-    planetModel = glm::translate(
-        planetModel,
-        glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
-    );
+    glm::mat4 planetModel = createPlanetOrbitModel(planet, simulationTime);
 
     planetModel = glm::rotate(
         planetModel,
@@ -757,24 +778,6 @@ glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
     );
 
     return planetModel;
-}
-
-glm::mat4 createPlanetOrbitModel(const Planet& planet, float simulationTime)
-{
-    glm::mat4 orbitModel = glm::mat4(1.0f);
-
-    orbitModel = glm::rotate(
-        orbitModel,
-        simulationTime * planet.orbitSpeed,
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-
-    orbitModel = glm::translate(
-        orbitModel,
-        glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
-    );
-
-    return orbitModel;
 }
 
 glm::mat4 createMoonModel(
@@ -869,7 +872,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 17 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 19 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -1191,7 +1194,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 17",
+        "Sistema Solare 3D - Tappa 19",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1226,6 +1229,7 @@ int main()
     GLuint earthCloudsTexture = loadTextureFromFile("assets/textures/earth_clouds.jpg", 3);
     GLuint earthNightTexture = loadTextureFromFile("assets/textures/earth_nightmap.jpg", 3);
     GLuint venusAtmosphereTexture = loadTextureFromFile("assets/textures/venus_atmosphere.jpg", 2);
+    GLuint starsTexture = loadTextureFromFile("assets/textures/stars_milky_way.jpg", 8);
     std::vector<GLuint> planetTextures = {
         loadTextureFromFile("assets/textures/mercury.jpg", 1), // Mercurio
         loadTextureFromFile("assets/textures/venus.jpg", 2),   // Venere
@@ -1430,7 +1434,8 @@ int main()
             "Mercurio",
             "Pianeta roccioso",
             "Il pianeta piu vicino al Sole e il piu piccolo del Sistema Solare.",
-            2.4f,
+            2.85f,
+            0.16f,
             0.22f,
             2.40f,
             2.00f,
@@ -1441,7 +1446,8 @@ int main()
             "Venere",
             "Pianeta roccioso",
             "Pianeta con atmosfera molto densa e temperature superficiali molto elevate.",
-            3.4f,
+            3.75f,
+            0.02f,
             0.38f,
             1.85f,
             1.20f,
@@ -1452,7 +1458,8 @@ int main()
             "Terra",
             "Pianeta roccioso",
             "Unico pianeta noto a ospitare vita, con acqua liquida in superficie.",
-            4.5f,
+            4.75f,
+            0.03f,
             0.42f,
             1.50f,
             3.00f,
@@ -1463,7 +1470,8 @@ int main()
             "Marte",
             "Pianeta roccioso",
             "Conosciuto come pianeta rosso per la presenza di ossidi di ferro sulla superficie.",
-            5.6f,
+            6.15f,
+            0.09f,
             0.32f,
             1.20f,
             2.60f,
@@ -1474,7 +1482,8 @@ int main()
             "Giove",
             "Gigante gassoso",
             "Il pianeta piu grande del Sistema Solare, caratterizzato da intense tempeste atmosferiche.",
-            7.4f,
+            9.10f,
+            0.05f,
             0.90f,
             0.85f,
             3.50f,
@@ -1485,7 +1494,8 @@ int main()
             "Saturno",
             "Gigante gassoso",
             "Famoso per il suo grande sistema di anelli, che verra aggiunto in una tappa successiva.",
-            9.4f,
+            13.00f,
+            0.06f,
             0.78f,
             0.65f,
             3.20f,
@@ -1496,7 +1506,8 @@ int main()
             "Urano",
             "Gigante ghiacciato",
             "Pianeta dal colore azzurro-verde dovuto alla presenza di metano nell'atmosfera.",
-            11.2f,
+            20.80f,
+            0.08f,
             0.62f,
             0.48f,
             2.20f,
@@ -1507,7 +1518,8 @@ int main()
             "Nettuno",
             "Gigante ghiacciato",
             "Il pianeta piu lontano dal Sole, caratterizzato da venti molto intensi.",
-            13.0f,
+            30.50f,
+            0.02f,
             0.60f,
             0.38f,
             2.00f,
@@ -1694,7 +1706,7 @@ int main()
                         );
 
                         printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 17 | Selezionato: Sole");
+                        window.setTitle("Sistema Solare 3D - Tappa 19 | Selezionato: Sole");
                     }
                     else if (isClickOnScreenInfo(
                             mousePressed->position.x,
@@ -1717,7 +1729,7 @@ int main()
                         );
 
                         printMoonInfo(moonInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 17 | Selezionato: Luna");
+                        window.setTitle("Sistema Solare 3D - Tappa 19 | Selezionato: Luna");
                     }
                     else
                     {
@@ -1759,7 +1771,7 @@ int main()
                                 previousCameraDistance
                             );
                             std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 17");
+                            window.setTitle("Sistema Solare 3D - Tappa 19");
                         }
                     }
                 }
@@ -1893,6 +1905,32 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glm::vec3 lightPosition(0.0f, 0.0f, 0.0f);
+
+        glm::mat4 starsModel = glm::mat4(1.0f);
+        starsModel = glm::translate(starsModel, cameraWorldPosition);
+        starsModel = glm::rotate(
+            starsModel,
+            simulationTime * 0.015f,
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+        starsModel = glm::scale(starsModel, glm::vec3(35.0f));
+
+        glDepthMask(GL_FALSE);
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            starsModel,
+            glm::vec3(0.55f, 0.60f, 0.72f),
+            lightPosition,
+            cameraWorldPosition,
+            6,
+            starsTexture,
+            true
+        );
+        glDepthMask(GL_TRUE);
+
         glLineWidth(1.5f);
         const int venusIndex = 1;
         const int earthIndex = 2;
@@ -1907,6 +1945,7 @@ int main()
                     orbitVAO,
                     static_cast<int>(orbitVertices.size()),
                     planet.orbitRadius,
+                    planet.orbitEccentricity,
                     glm::vec3(0.35f, 0.35f, 0.45f)
                 );
             }
@@ -1926,9 +1965,12 @@ int main()
             );
         }
 
-        glm::vec3 lightPosition(0.0f, 0.0f, 0.0f);
-
         glm::mat4 sunModel = glm::mat4(1.0f);
+        sunModel = glm::rotate(
+            sunModel,
+            simulationTime * 0.18f,
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
         sunModel = glm::scale(sunModel, glm::vec3(sunInfo.size));
 
         glm::vec3 sunColor = glm::vec3(1.0f, 1.0f, 1.0f);
@@ -2189,6 +2231,7 @@ int main()
     glDeleteTextures(1, &earthCloudsTexture);
     glDeleteTextures(1, &earthNightTexture);
     glDeleteTextures(1, &venusAtmosphereTexture);
+    glDeleteTextures(1, &starsTexture);
     for (GLuint textureID : planetTextures)
     {
         glDeleteTextures(1, &textureID);
