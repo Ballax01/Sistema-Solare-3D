@@ -44,6 +44,20 @@ struct SunInfo
     float size;
 };
 
+struct MoonInfo
+{
+    std::string name;
+    std::string type;
+    std::string description;
+
+    float orbitRadius;
+    float size;
+    float orbitSpeed;
+    float rotationSpeed;
+
+    glm::vec3 color;
+};
+
 struct PlanetScreenInfo
 {
     int index;
@@ -382,6 +396,18 @@ GLuint createProceduralTexture(int textureType)
                 float bands = 0.5f + 0.5f * std::sin((v * 16.0f + u * 2.0f) * PI);
                 color = glm::vec3(0.06f + 0.05f * n, 0.16f + 0.08f * bands, 0.70f + 0.20f * bands);
             }
+            else if (textureType == 9) // Luna
+            {
+                float craters = pseudoNoise(u * 42.0f, v * 42.0f, 13.0f);
+                float shade = 0.48f + 0.28f * n;
+
+                if (craters > 0.82f)
+                {
+                    shade *= 0.62f;
+                }
+
+                color = glm::vec3(shade, shade, shade * 0.96f);
+            }
 
             int offset = (y * width + x) * 3;
             pixels[offset] = toByte(color.r);
@@ -448,7 +474,7 @@ GLuint loadTextureFromFile(const std::string& path, int fallbackTextureType)
         return createProceduralTexture(fallbackTextureType);
     }
 
-   // image.flipVertically();
+   
 
     sf::Vector2u size = image.getSize();
 
@@ -557,6 +583,31 @@ void drawOrbit(
     glBindVertexArray(0);
 }
 
+void drawOrbitWithModel(
+    GLuint shaderProgram,
+    GLuint orbitVAO,
+    int vertexCount,
+    const glm::mat4& model,
+    const glm::vec3& color
+)
+{
+    glUseProgram(shaderProgram);
+
+    GLint modelLocation = glGetUniformLocation(shaderProgram, "model");
+    GLint colorLocation = glGetUniformLocation(shaderProgram, "objectColor");
+    GLint renderModeLocation = glGetUniformLocation(shaderProgram, "renderMode");
+    GLint useTextureLocation = glGetUniformLocation(shaderProgram, "useTexture");
+
+    glUniformMatrix4fv(modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+    glUniform3fv(colorLocation, 1, glm::value_ptr(color));
+    glUniform1i(renderModeLocation, 0);
+    glUniform1i(useTextureLocation, 0);
+
+    glBindVertexArray(orbitVAO);
+    glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
+    glBindVertexArray(0);
+}
+
 glm::mat4 createCameraView(float yaw, float pitch, float distance)
 {
     float yawRad = glm::radians(yaw);
@@ -630,6 +681,57 @@ glm::mat4 createPlanetModel(const Planet& planet, float simulationTime)
     return planetModel;
 }
 
+glm::mat4 createPlanetOrbitModel(const Planet& planet, float simulationTime)
+{
+    glm::mat4 orbitModel = glm::mat4(1.0f);
+
+    orbitModel = glm::rotate(
+        orbitModel,
+        simulationTime * planet.orbitSpeed,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    orbitModel = glm::translate(
+        orbitModel,
+        glm::vec3(planet.orbitRadius, 0.0f, 0.0f)
+    );
+
+    return orbitModel;
+}
+
+glm::mat4 createMoonModel(
+    const Planet& earth,
+    const MoonInfo& moon,
+    float simulationTime
+)
+{
+    glm::mat4 moonModel = createPlanetOrbitModel(earth, simulationTime);
+
+    moonModel = glm::rotate(
+        moonModel,
+        simulationTime * moon.orbitSpeed,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    moonModel = glm::translate(
+        moonModel,
+        glm::vec3(moon.orbitRadius, 0.0f, 0.0f)
+    );
+
+    moonModel = glm::rotate(
+        moonModel,
+        simulationTime * moon.rotationSpeed,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+
+    moonModel = glm::scale(
+        moonModel,
+        glm::vec3(moon.size)
+    );
+
+    return moonModel;
+}
+
 std::string formatSimulationValue(float value, const std::string& unit)
 {
     std::ostringstream stream;
@@ -663,6 +765,19 @@ void printSunInfo(const SunInfo& sun)
     std::cout << "==============================\n";
 }
 
+void printMoonInfo(const MoonInfo& moon)
+{
+    std::cout << "\n==============================\n";
+    std::cout << "Corpo selezionato: " << moon.name << "\n";
+    std::cout << "Tipo: " << moon.type << "\n";
+    std::cout << "Descrizione: " << moon.description << "\n";
+    std::cout << "Distanza orbitale dalla Terra simulata: "
+              << formatSimulationValue(moon.orbitRadius, "unita scena") << "\n";
+    std::cout << "Scala dimensione: "
+              << formatSimulationValue(moon.size, "fattore scala") << "\n";
+    std::cout << "==============================\n";
+}
+
 void selectPlanet(
     int planetIndex,
     int& selectedPlanetIndex,
@@ -676,7 +791,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 15 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 16 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -815,6 +930,8 @@ void drawInfoPanel(
     int selectedPlanetIndex,
     const SunInfo& sunInfo,
     bool isSunSelected,
+    const MoonInfo& moonInfo,
+    bool isMoonSelected,
     unsigned int windowWidth,
     unsigned int windowHeight
 )
@@ -858,6 +975,15 @@ void drawInfoPanel(
             "Tipo: " + sunInfo.type + "\n" +
             wrapText(sunInfo.description, maxLineLength) + "\n" +
             "Scala dimensione: " + formatSimulationValue(sunInfo.size, "fattore scala");
+    }
+    else if (isMoonSelected)
+    {
+        title = moonInfo.name;
+        body =
+            "Tipo: " + moonInfo.type + "\n" +
+            wrapText(moonInfo.description, maxLineLength) + "\n" +
+            "Distanza dalla Terra: " + formatSimulationValue(moonInfo.orbitRadius, "unita scena") + "\n" +
+            "Scala dimensione: " + formatSimulationValue(moonInfo.size, "fattore scala");
     }
     else if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
     {
@@ -987,7 +1113,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 15",
+        "Sistema Solare 3D - Tappa 16",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1015,6 +1141,7 @@ int main()
     GLuint shaderProgram = createShaderProgram();
 
     GLuint sunTexture = loadTextureFromFile("assets/textures/sun.jpg", 0);
+    GLuint moonTexture = loadTextureFromFile("assets/textures/moon.jpg", 9);
 
     std::vector<GLuint> planetTextures = {
         loadTextureFromFile("assets/textures/mercury.jpg", 1), // Mercurio
@@ -1142,6 +1269,17 @@ int main()
         1.35f
     };
 
+    MoonInfo moonInfo = {
+        "Luna",
+        "Satellite naturale",
+        "La Luna e il satellite naturale della Terra. Orbita attorno al nostro pianeta e influenza fenomeni come le maree.",
+        0.85f,
+        0.12f,
+        5.20f,
+        1.80f,
+        glm::vec3(0.80f, 0.80f, 0.78f)
+    };
+
     std::vector<Planet> planets = {
         {
             "Mercurio",
@@ -1241,6 +1379,7 @@ int main()
 
     int selectedPlanetIndex = -1;
     bool isSunSelected = false;
+    bool isMoonSelected = false;
     bool isPaused = false;
     float timeScale = 1.0f;
     bool showOrbits = true;
@@ -1257,6 +1396,13 @@ int main()
         static_cast<float>(windowWidth) * 0.5f,
         static_cast<float>(windowHeight) * 0.5f,
         50.0f
+    };
+
+    PlanetScreenInfo moonScreenInfo = {
+        -200,
+        static_cast<float>(windowWidth) * 0.5f,
+        static_cast<float>(windowHeight) * 0.5f,
+        18.0f
     };
 
     sf::Clock clock;
@@ -1362,6 +1508,7 @@ int main()
                 if (keyboardPlanetIndex != -1)
                 {
                     isSunSelected = false;
+                    isMoonSelected = false;
                     selectPlanet(keyboardPlanetIndex, selectedPlanetIndex, planets, window);
                     startFollowingSelectedPlanet(
                         selectedPlanetIndex,
@@ -1389,6 +1536,7 @@ int main()
                     {
                         selectedPlanetIndex = -1;
                         isSunSelected = true;
+                        isMoonSelected = false;
 
                         stopFollowingPlanet(
                             isFollowingPlanet,
@@ -1401,7 +1549,30 @@ int main()
                         );
 
                         printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 15 | Selezionato: Sole");
+                        window.setTitle("Sistema Solare 3D - Tappa 16 | Selezionato: Sole");
+                    }
+                    else if (isClickOnScreenInfo(
+                            mousePressed->position.x,
+                            mousePressed->position.y,
+                            moonScreenInfo
+                        ))
+                    {
+                        selectedPlanetIndex = -1;
+                        isSunSelected = false;
+                        isMoonSelected = true;
+
+                        stopFollowingPlanet(
+                            isFollowingPlanet,
+                            cameraYaw,
+                            cameraPitch,
+                            cameraDistance,
+                            previousCameraYaw,
+                            previousCameraPitch,
+                            previousCameraDistance
+                        );
+
+                        printMoonInfo(moonInfo);
+                        window.setTitle("Sistema Solare 3D - Tappa 16 | Selezionato: Luna");
                     }
                     else
                     {
@@ -1414,6 +1585,7 @@ int main()
                         if (clickedIndex != -1)
                         {
                             isSunSelected = false;
+                            isMoonSelected = false;
                             selectPlanet(clickedIndex, selectedPlanetIndex, planets, window);
                             startFollowingSelectedPlanet(
                                 selectedPlanetIndex,
@@ -1431,6 +1603,7 @@ int main()
                         {
                             selectedPlanetIndex = -1;
                             isSunSelected = false;
+                            isMoonSelected = false;
                             stopFollowingPlanet(
                                 isFollowingPlanet,
                                 cameraYaw,
@@ -1441,7 +1614,7 @@ int main()
                                 previousCameraDistance
                             );
                             std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 15");
+                            window.setTitle("Sistema Solare 3D - Tappa 16");
                         }
                     }
                 }
@@ -1576,6 +1749,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glLineWidth(1.5f);
+        const int earthIndex = 2;
 
         if (showOrbits)
         {
@@ -1589,6 +1763,20 @@ int main()
                     glm::vec3(0.35f, 0.35f, 0.45f)
                 );
             }
+
+            glm::mat4 moonOrbitModel = createPlanetOrbitModel(planets[earthIndex], simulationTime);
+            moonOrbitModel = glm::scale(
+                moonOrbitModel,
+                glm::vec3(moonInfo.orbitRadius, moonInfo.orbitRadius, 1.0f)
+            );
+
+            drawOrbitWithModel(
+                shaderProgram,
+                orbitVAO,
+                static_cast<int>(orbitVertices.size()),
+                moonOrbitModel,
+                glm::vec3(0.42f, 0.42f, 0.50f)
+            );
         }
 
         glm::vec3 lightPosition(0.0f, 0.0f, 0.0f);
@@ -1688,6 +1876,40 @@ int main()
             );
         }
 
+        glm::mat4 moonModel = createMoonModel(planets[earthIndex], moonInfo, simulationTime);
+        glm::vec3 moonColor = glm::vec3(1.0f);
+
+        if (isMoonSelected)
+        {
+            moonColor = glm::vec3(1.20f, 1.20f, 0.75f);
+        }
+
+        drawSphere(
+            shaderProgram,
+            VAO,
+            static_cast<unsigned int>(sphereIndices.size()),
+            moonModel,
+            moonColor,
+            lightPosition,
+            cameraWorldPosition,
+            1,
+            moonTexture,
+            true
+        );
+
+        glm::vec4 moonCenterWorld = moonModel * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+
+        glm::vec3 projectedMoon = glm::project(
+            glm::vec3(moonCenterWorld),
+            view,
+            projection,
+            viewport
+        );
+
+        moonScreenInfo.x = projectedMoon.x;
+        moonScreenInfo.y = static_cast<float>(windowHeight) - projectedMoon.y;
+        moonScreenInfo.radius = 18.0f;
+
         if (showInfoPanel)
         {
             window.pushGLStates();
@@ -1705,6 +1927,8 @@ int main()
                 selectedPlanetIndex,
                 sunInfo,
                 isSunSelected,
+                moonInfo,
+                isMoonSelected,
                 windowWidth,
                 windowHeight
             );
@@ -1722,6 +1946,7 @@ int main()
     glDeleteBuffers(1, &orbitVBO);
 
     glDeleteTextures(1, &sunTexture);
+    glDeleteTextures(1, &moonTexture);
 
     for (GLuint textureID : planetTextures)
     {
