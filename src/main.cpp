@@ -149,6 +149,14 @@ GLuint createShaderProgram()
                 return;
             }
 
+            // renderMode 3: texture piatta per superfici sottili come l'anello di Saturno.
+            if (renderMode == 3)
+            {
+                vec4 textureColor = texture(diffuseTexture, TexCoord);
+                FragColor = vec4(textureColor.rgb * objectColor, textureColor.a);
+                return;
+            }
+
             // renderMode 2: Sole con ombreggiatura fittizia per renderlo piu 3D,
             // mantenendo un aspetto luminoso e leggibile.
             if (renderMode == 2)
@@ -273,6 +281,52 @@ void createOrbitCircle(std::vector<glm::vec3>& vertices, int segments)
         float y = std::sin(angle);
 
         vertices.push_back(glm::vec3(x, y, 0.0f));
+    }
+}
+
+void createRing(
+    std::vector<Vertex>& vertices,
+    std::vector<unsigned int>& indices,
+    float innerRadius,
+    float outerRadius,
+    int segments
+)
+{
+    const float PI = 3.14159265359f;
+
+    for (int i = 0; i <= segments; ++i)
+    {
+        float angle = 2.0f * PI * static_cast<float>(i) / static_cast<float>(segments);
+        float cosAngle = std::cos(angle);
+        float sinAngle = std::sin(angle);
+
+        vertices.push_back({
+            glm::vec3(innerRadius * cosAngle, innerRadius * sinAngle, 0.0f),
+            glm::vec3(0.0f, 0.0f, 1.0f),
+            glm::vec2(0.0f, 0.5f)
+        });
+
+        vertices.push_back({
+            glm::vec3(outerRadius * cosAngle, outerRadius * sinAngle, 0.0f),
+            glm::vec3(0.0f, 0.0f, 1.0f),
+            glm::vec2(1.0f, 0.5f)
+        });
+    }
+
+    for (int i = 0; i < segments; ++i)
+    {
+        unsigned int innerCurrent = static_cast<unsigned int>(i * 2);
+        unsigned int outerCurrent = innerCurrent + 1;
+        unsigned int innerNext = innerCurrent + 2;
+        unsigned int outerNext = innerCurrent + 3;
+
+        indices.push_back(innerCurrent);
+        indices.push_back(outerCurrent);
+        indices.push_back(innerNext);
+
+        indices.push_back(innerNext);
+        indices.push_back(outerCurrent);
+        indices.push_back(outerNext);
     }
 }
 
@@ -791,7 +845,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 16 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 17 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -1113,7 +1167,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 16",
+        "Sistema Solare 3D - Tappa 17",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1129,6 +1183,8 @@ int main()
 
     glViewport(0, 0, static_cast<GLsizei>(windowWidth), static_cast<GLsizei>(windowHeight));
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
 
     sf::Font uiFont;
@@ -1142,7 +1198,7 @@ int main()
 
     GLuint sunTexture = loadTextureFromFile("assets/textures/sun.jpg", 0);
     GLuint moonTexture = loadTextureFromFile("assets/textures/moon.jpg", 9);
-
+    GLuint saturnRingTexture = loadTextureFromFile("assets/textures/saturn_ring.png", 6);
     std::vector<GLuint> planetTextures = {
         loadTextureFromFile("assets/textures/mercury.jpg", 1), // Mercurio
         loadTextureFromFile("assets/textures/venus.jpg", 2),   // Venere
@@ -1182,6 +1238,68 @@ int main()
         GL_ELEMENT_ARRAY_BUFFER,
         sphereIndices.size() * sizeof(unsigned int),
         sphereIndices.data(),
+        GL_STATIC_DRAW
+    );
+
+    glVertexAttribPointer(
+        0,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        reinterpret_cast<void*>(0)
+    );
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(
+        1,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        reinterpret_cast<void*>(sizeof(glm::vec3))
+    );
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(
+        2,
+        2,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        reinterpret_cast<void*>(sizeof(glm::vec3) * 2)
+    );
+    glEnableVertexAttribArray(2);
+
+    glBindVertexArray(0);
+
+    std::vector<Vertex> ringVertices;
+    std::vector<unsigned int> ringIndices;
+    createRing(ringVertices, ringIndices, 0.95f, 1.55f, 128);
+
+    GLuint ringVAO = 0;
+    GLuint ringVBO = 0;
+    GLuint ringEBO = 0;
+
+    glGenVertexArrays(1, &ringVAO);
+    glGenBuffers(1, &ringVBO);
+    glGenBuffers(1, &ringEBO);
+
+    glBindVertexArray(ringVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, ringVBO);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        ringVertices.size() * sizeof(Vertex),
+        ringVertices.data(),
+        GL_STATIC_DRAW
+    );
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ringEBO);
+    glBufferData(
+        GL_ELEMENT_ARRAY_BUFFER,
+        ringIndices.size() * sizeof(unsigned int),
+        ringIndices.data(),
         GL_STATIC_DRAW
     );
 
@@ -1549,7 +1667,7 @@ int main()
                         );
 
                         printSunInfo(sunInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 16 | Selezionato: Sole");
+                        window.setTitle("Sistema Solare 3D - Tappa 17 | Selezionato: Sole");
                     }
                     else if (isClickOnScreenInfo(
                             mousePressed->position.x,
@@ -1572,7 +1690,7 @@ int main()
                         );
 
                         printMoonInfo(moonInfo);
-                        window.setTitle("Sistema Solare 3D - Tappa 16 | Selezionato: Luna");
+                        window.setTitle("Sistema Solare 3D - Tappa 17 | Selezionato: Luna");
                     }
                     else
                     {
@@ -1614,7 +1732,7 @@ int main()
                                 previousCameraDistance
                             );
                             std::cout << "\nNessun corpo celeste selezionato.\n";
-                            window.setTitle("Sistema Solare 3D - Tappa 16");
+                            window.setTitle("Sistema Solare 3D - Tappa 17");
                         }
                     }
                 }
@@ -1750,6 +1868,7 @@ int main()
 
         glLineWidth(1.5f);
         const int earthIndex = 2;
+        const int saturnIndex = 5;
 
         if (showOrbits)
         {
@@ -1834,11 +1953,6 @@ int main()
 
             glm::vec3 color = glm::vec3(1.0f);
 
-            if (i == selectedPlanetIndex)
-            {
-                color = glm::vec3(1.20f, 1.20f, 0.75f);
-            }
-
             drawSphere(
                 shaderProgram,
                 VAO,
@@ -1876,13 +1990,33 @@ int main()
             );
         }
 
+        glm::mat4 saturnRingModel = createPlanetOrbitModel(planets[saturnIndex], simulationTime);
+        saturnRingModel = glm::rotate(
+            saturnRingModel,
+            glm::radians(26.0f),
+            glm::vec3(1.0f, 0.0f, 0.0f)
+        );
+        saturnRingModel = glm::rotate(
+            saturnRingModel,
+            simulationTime * 0.55f,
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+
+        drawSphere(
+            shaderProgram,
+            ringVAO,
+            static_cast<unsigned int>(ringIndices.size()),
+            saturnRingModel,
+            glm::vec3(1.0f),
+            lightPosition,
+            cameraWorldPosition,
+            3,
+            saturnRingTexture,
+            true
+        );
+
         glm::mat4 moonModel = createMoonModel(planets[earthIndex], moonInfo, simulationTime);
         glm::vec3 moonColor = glm::vec3(1.0f);
-
-        if (isMoonSelected)
-        {
-            moonColor = glm::vec3(1.20f, 1.20f, 0.75f);
-        }
 
         drawSphere(
             shaderProgram,
@@ -1942,12 +2076,16 @@ int main()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
 
+    glDeleteVertexArrays(1, &ringVAO);
+    glDeleteBuffers(1, &ringVBO);
+    glDeleteBuffers(1, &ringEBO);
+
     glDeleteVertexArrays(1, &orbitVAO);
     glDeleteBuffers(1, &orbitVBO);
 
     glDeleteTextures(1, &sunTexture);
     glDeleteTextures(1, &moonTexture);
-
+    glDeleteTextures(1, &saturnRingTexture);
     for (GLuint textureID : planetTextures)
     {
         glDeleteTextures(1, &textureID);
