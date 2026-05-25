@@ -745,6 +745,40 @@ glm::mat4 createCameraViewAroundTarget(
     );
 }
 
+glm::vec3 createFreeCameraForward(float yaw, float pitch)
+{
+    float yawRad = glm::radians(yaw);
+    float pitchRad = glm::radians(pitch);
+
+    glm::vec3 forward;
+    forward.x = std::cos(pitchRad) * std::sin(yawRad);
+    forward.y = -std::cos(pitchRad) * std::cos(yawRad);
+    forward.z = std::sin(pitchRad);
+
+    return glm::normalize(forward);
+}
+
+glm::vec3 createFreeCameraRight(float yaw)
+{
+    glm::vec3 forward = createFreeCameraForward(yaw, 0.0f);
+    return glm::normalize(glm::cross(forward, glm::vec3(0.0f, 0.0f, 1.0f)));
+}
+
+glm::mat4 createFreeCameraView(
+    const glm::vec3& cameraPosition,
+    float yaw,
+    float pitch
+)
+{
+    glm::vec3 forward = createFreeCameraForward(yaw, pitch);
+
+    return glm::lookAt(
+        cameraPosition,
+        cameraPosition + forward,
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+}
+
 glm::mat4 createPlanetOrbitModel(const Planet& planet, float simulationTime)
 {
     float angle = simulationTime * planet.orbitSpeed;
@@ -887,7 +921,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 20 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 21 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -971,22 +1005,21 @@ void selectSun(
     sf::RenderWindow& window
 )
 {
+    if (!isFollowingPlanet)
+    {
+        previousCameraYaw = cameraYaw;
+        previousCameraPitch = cameraPitch;
+        previousCameraDistance = cameraDistance;
+    }
+
     selectedPlanetIndex = -1;
     isSunSelected = true;
     isMoonSelected = false;
-
-    stopFollowingPlanet(
-        isFollowingPlanet,
-        cameraYaw,
-        cameraPitch,
-        cameraDistance,
-        previousCameraYaw,
-        previousCameraPitch,
-        previousCameraDistance
-    );
+    isFollowingPlanet = true;
+    cameraDistance = 5.5f;
 
     printSunInfo(sunInfo);
-    window.setTitle("Sistema Solare 3D - Tappa 20 | Selezionato: Sole");
+    window.setTitle("Sistema Solare 3D - Tappa 21 | Selezionato: Sole");
 }
 
 int numberFromKey(sf::Keyboard::Key key)
@@ -1162,8 +1195,8 @@ void drawControlsLegend(
 
     const float x = 18.0f;
     const float y = 18.0f;
-    const float width = 520.0f;
-    const float height = 106.0f;
+    const float width = 640.0f;
+    const float height = 126.0f;
 
     sf::RectangleShape panel({ width, height });
     panel.setPosition({ x, y });
@@ -1181,8 +1214,9 @@ void drawControlsLegend(
     sf::Text controlsText(
         font,
         "Mouse: trascina camera   rotella: zoom   SPACE: pausa   +/-: velocita\n"
+        "C: camera libera/orbitale   mouse: guarda/trascina   SPACE: pausa   +/-: velocita\n"
         "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "A/D: ruota camera   W/S: zoom   F: esci follow   1: Sole   2-9: pianeti   ESC: esci",
+        "Orbitale A/D W/S   Libera W/A/S/D Q/E   F: esci follow   1: Sole   2-9: pianeti   ESC: esci",
         14
     );
     controlsText.setPosition({ x + 14.0f, y + 38.0f });
@@ -1296,7 +1330,7 @@ void handleCelestialBodyClick(
         );
 
         printMoonInfo(moonInfo);
-        window.setTitle("Sistema Solare 3D - Tappa 20 | Selezionato: Luna");
+        window.setTitle("Sistema Solare 3D - Tappa 21 | Selezionato: Luna");
         return;
     }
 
@@ -1334,7 +1368,7 @@ void handleCelestialBodyClick(
         previousCameraDistance
     );
     std::cout << "\nNessun corpo celeste selezionato.\n";
-    window.setTitle("Sistema Solare 3D - Tappa 20");
+    window.setTitle("Sistema Solare 3D - Tappa 21");
 }
 
 int main()
@@ -1351,7 +1385,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 20",
+        "Sistema Solare 3D - Tappa 21",
         sf::Style::Default,
         sf::State::Windowed,
         settings
@@ -1706,6 +1740,10 @@ int main()
     float cameraYaw = 0.0f;
     float cameraPitch = 32.0f;
     float cameraDistance = 22.0f;
+    bool isFreeCamera = false;
+    glm::vec3 freeCameraPosition(0.0f, -18.0f, 8.0f);
+    float freeCameraYaw = 0.0f;
+    float freeCameraPitch = 18.0f;
 
     int selectedPlanetIndex = -1;
     bool isSunSelected = false;
@@ -1802,7 +1840,17 @@ int main()
                     cameraYaw = 0.0f;
                     cameraPitch = 32.0f;
                     cameraDistance = 22.0f;
+                    freeCameraPosition = glm::vec3(0.0f, -18.0f, 8.0f);
+                    freeCameraYaw = 0.0f;
+                    freeCameraPitch = 18.0f;
                     std::cout << "Camera ripristinata.\n";
+                }
+
+                if (keyPressed->code == sf::Keyboard::Key::C)
+                {
+                    isFreeCamera = !isFreeCamera;
+                    isFollowingPlanet = false;
+                    std::cout << (isFreeCamera ? "Camera libera attiva.\n" : "Camera orbitale attiva.\n");
                 }
 
                 if (keyPressed->code == sf::Keyboard::Key::T)
@@ -1904,8 +1952,17 @@ int main()
                         hasMouseDragged = true;
                     }
 
-                    cameraYaw += static_cast<float>(delta.x) * 0.28f;
-                    cameraPitch += static_cast<float>(delta.y) * 0.22f;
+                    if (isFreeCamera)
+                    {
+                        freeCameraYaw += static_cast<float>(delta.x) * 0.18f;
+                        freeCameraPitch -= static_cast<float>(delta.y) * 0.16f;
+                    }
+                    else
+                    {
+                        cameraYaw += static_cast<float>(delta.x) * 0.28f;
+                        cameraPitch += static_cast<float>(delta.y) * 0.22f;
+                    }
+
                     previousMousePosition = currentPosition;
                 }
             }
@@ -1947,7 +2004,17 @@ int main()
             {
                 if (mouseWheelScrolled->wheel == sf::Mouse::Wheel::Vertical)
                 {
-                    cameraDistance -= mouseWheelScrolled->delta * 1.4f;
+                    if (isFreeCamera)
+                    {
+                        freeCameraPosition += createFreeCameraForward(
+                            freeCameraYaw,
+                            freeCameraPitch
+                        ) * (mouseWheelScrolled->delta * 1.8f);
+                    }
+                    else
+                    {
+                        cameraDistance -= mouseWheelScrolled->delta * 1.4f;
+                    }
                 }
             }
 
@@ -1987,13 +2054,19 @@ int main()
 
         float cameraRotationSpeed = 70.0f;
         float cameraZoomSpeed = 10.0f;
+        float freeCameraSpeed = 9.0f;
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
+        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift))
+        {
+            freeCameraSpeed *= 2.0f;
+        }
+
+        if (!isFreeCamera && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
         {
             cameraYaw -= cameraRotationSpeed * deltaTime;
         }
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
+        if (!isFreeCamera && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
         {
             cameraYaw += cameraRotationSpeed * deltaTime;
         }
@@ -2008,14 +2081,57 @@ int main()
             cameraPitch -= cameraRotationSpeed * deltaTime;
         }
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+        if (!isFreeCamera && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
         {
             cameraDistance -= cameraZoomSpeed * deltaTime;
         }
 
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+        if (!isFreeCamera && sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
         {
             cameraDistance += cameraZoomSpeed * deltaTime;
+        }
+
+        if (isFreeCamera)
+        {
+            glm::vec3 forward = createFreeCameraForward(freeCameraYaw, freeCameraPitch);
+            glm::vec3 right = createFreeCameraRight(freeCameraYaw);
+            glm::vec3 up(0.0f, 0.0f, 1.0f);
+            glm::vec3 movement(0.0f);
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W))
+            {
+                movement += forward;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S))
+            {
+                movement -= forward;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::D))
+            {
+                movement += right;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A))
+            {
+                movement -= right;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::E))
+            {
+                movement += up;
+            }
+
+            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Q))
+            {
+                movement -= up;
+            }
+
+            if (glm::length(movement) > 0.0f)
+            {
+                freeCameraPosition += glm::normalize(movement) * freeCameraSpeed * deltaTime;
+            }
         }
 
         if (cameraPitch > 80.0f)
@@ -2028,8 +2144,24 @@ int main()
             cameraPitch = 5.0f;
         }
 
+        if (freeCameraPitch > 85.0f)
+        {
+            freeCameraPitch = 85.0f;
+        }
+
+        if (freeCameraPitch < -85.0f)
+        {
+            freeCameraPitch = -85.0f;
+        }
+
         float minimumCameraDistance = isFollowingPlanet ? 3.5f : 8.0f;
         float maximumCameraDistance = isFollowingPlanet ? 18.0f : 45.0f;
+
+        if (isSunSelected)
+        {
+            minimumCameraDistance = 4.0f;
+            maximumCameraDistance = 16.0f;
+        }
 
         if (cameraDistance < minimumCameraDistance)
         {
@@ -2073,6 +2205,16 @@ int main()
             cameraDistance,
             cameraTarget
         );
+
+        if (isFreeCamera)
+        {
+            cameraWorldPosition = freeCameraPosition;
+            view = createFreeCameraView(
+                freeCameraPosition,
+                freeCameraYaw,
+                freeCameraPitch
+            );
+        }
 
         glUseProgram(shaderProgram);
         glUniformMatrix4fv(viewLocation, 1, GL_FALSE, glm::value_ptr(view));
@@ -2145,7 +2287,14 @@ int main()
             simulationTime * 0.18f,
             glm::vec3(0.0f, 0.0f, 1.0f)
         );
-        sunModel = glm::scale(sunModel, glm::vec3(sunInfo.size));
+        float sunScale = sunInfo.size;
+
+        if (isSunSelected)
+        {
+            sunScale *= 1.32f;
+        }
+
+        sunModel = glm::scale(sunModel, glm::vec3(sunScale));
 
         glm::vec3 sunColor = glm::vec3(1.0f, 1.0f, 1.0f);
 
