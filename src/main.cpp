@@ -901,7 +901,7 @@ void selectPlanet(
         printPlanetInfo(planets[selectedPlanetIndex]);
 
         window.setTitle(
-            "Sistema Solare 3D - Tappa 21 | Selezionato: " +
+            "Sistema Solare 3D - Tappa 24 | Selezionato: " +
             planets[selectedPlanetIndex].name
         );
     }
@@ -999,7 +999,7 @@ void selectSun(
     cameraDistance = 5.5f;
 
     printSunInfo(sunInfo);
-    window.setTitle("Sistema Solare 3D - Tappa 21 | Selezionato: Sole");
+    window.setTitle("Sistema Solare 3D - Tappa 24 | Selezionato: Sole");
 }
 
 int numberFromKey(sf::Keyboard::Key key)
@@ -1310,7 +1310,7 @@ void handleCelestialBodyClick(
         );
 
         printMoonInfo(moonInfo);
-        window.setTitle("Sistema Solare 3D - Tappa 21 | Selezionato: Luna");
+    window.setTitle("Sistema Solare 3D - Tappa 24 | Selezionato: Luna");
         return;
     }
 
@@ -1348,7 +1348,7 @@ void handleCelestialBodyClick(
         previousCameraDistance
     );
     std::cout << "\nNessun corpo celeste selezionato.\n";
-    window.setTitle("Sistema Solare 3D - Tappa 21");
+    window.setTitle("Sistema Solare 3D - Tappa 24");
 }
 
 int main()
@@ -1365,7 +1365,7 @@ int main()
 
     sf::RenderWindow window(
         sf::VideoMode({windowWidth, windowHeight}),
-        "Sistema Solare 3D - Tappa 21",
+        "Sistema Solare 3D - Tappa 24",
         sf::Style::Default,
         sf::State::Windowed,
         settings
