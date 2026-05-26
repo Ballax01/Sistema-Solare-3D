@@ -35,7 +35,6 @@ struct Planet
     float orbitSpeed;
     float rotationSpeed;
 
-    glm::vec3 color;
     int textureIndex;
 };
 
@@ -57,8 +56,6 @@ struct MoonInfo
     float size;
     float orbitSpeed;
     float rotationSpeed;
-
-    glm::vec3 color;
 };
 
 struct PlanetScreenInfo
@@ -699,23 +696,6 @@ void drawOrbitWithModel(
     glBindVertexArray(orbitVAO);
     glDrawArrays(GL_LINE_LOOP, 0, vertexCount);
     glBindVertexArray(0);
-}
-
-glm::mat4 createCameraView(float yaw, float pitch, float distance)
-{
-    float yawRad = glm::radians(yaw);
-    float pitchRad = glm::radians(pitch);
-
-    glm::vec3 cameraPosition;
-    cameraPosition.x = distance * std::cos(pitchRad) * std::sin(yawRad);
-    cameraPosition.y = -distance * std::cos(pitchRad) * std::cos(yawRad);
-    cameraPosition.z = distance * std::sin(pitchRad);
-
-    return glm::lookAt(
-        cameraPosition,
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
 }
 
 glm::vec3 createCameraPosition(float yaw, float pitch, float distance)
@@ -1616,8 +1596,7 @@ int main()
         0.85f,
         0.12f,
         5.20f,
-        1.80f,
-        glm::vec3(0.80f, 0.80f, 0.78f)
+        1.80f
     };
 
     std::vector<Planet> planets = {
@@ -1632,7 +1611,6 @@ int main()
             0.22f,
             2.40f,
             2.00f,
-            glm::vec3(0.55f, 0.55f, 0.55f),
             0
         },
         {
@@ -1646,7 +1624,6 @@ int main()
             0.38f,
             1.85f,
             1.20f,
-            glm::vec3(0.95f, 0.72f, 0.35f),
             1
         },
         {
@@ -1660,7 +1637,6 @@ int main()
             0.42f,
             1.50f,
             3.00f,
-            glm::vec3(0.1f, 0.35f, 1.0f),
             2
         },
         {
@@ -1674,7 +1650,6 @@ int main()
             0.32f,
             1.20f,
             2.60f,
-            glm::vec3(0.9f, 0.25f, 0.1f),
             3
         },
         {
@@ -1688,7 +1663,6 @@ int main()
             0.90f,
             0.85f,
             3.50f,
-            glm::vec3(0.85f, 0.62f, 0.38f),
             4
         },
         {
@@ -1702,7 +1676,6 @@ int main()
             0.78f,
             0.65f,
             3.20f,
-            glm::vec3(0.95f, 0.82f, 0.50f),
             5
         },
         {
@@ -1716,7 +1689,6 @@ int main()
             0.62f,
             0.48f,
             2.20f,
-            glm::vec3(0.45f, 0.85f, 0.85f),
             6
         },
         {
@@ -1730,7 +1702,6 @@ int main()
             0.60f,
             0.38f,
             2.00f,
-            glm::vec3(0.15f, 0.25f, 0.90f),
             7
         }
     };

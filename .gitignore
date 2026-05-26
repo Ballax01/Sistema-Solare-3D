@@ -1,6 +1,9 @@
 build/
+build-*/
+export_tappe/
 .vscode/
 *.exe
+*.zip
 *.dll
 *.pdb
 *.obj

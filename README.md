@@ -44,20 +44,23 @@ sistema-solare-3d/
       neptune.jpg
       moon.jpg
       stars_milky_way.jpg
+  scripts/
+    build-tappe.ps1
 ```
 
 ## Build
 
-Il file `CMakeLists.txt` punta a SFML in:
-
-```text
-C:/libs/SFML-3.0.0
-```
-
-Per compilare:
+Il file `CMakeLists.txt` non contiene path assoluti. Se SFML non viene trovato automaticamente, indicare a CMake la cartella di configurazione di SFML:
 
 ```powershell
-cmake -S . -B build
+cmake -S . -B build -DSFML_DIR="C:/libs/SFML-3.0.0/lib/cmake/SFML"
+cmake --build build --config Debug
+```
+
+In alternativa si puo indicare la cartella principale di SFML:
+
+```powershell
+cmake -S . -B build -DSFML_ROOT="C:/libs/SFML-3.0.0"
 cmake --build build --config Debug
 ```
 
@@ -68,6 +71,24 @@ build/Debug/SistemaSolare3D.exe
 ```
 
 Il post-build copia automaticamente le DLL di SFML nella cartella dell'eseguibile.
+
+## Tappe di sviluppo
+
+Le tappe di sviluppo sono versionate tramite tag Git da `tappa-01` a `tappa-23`.
+
+Per vedere le tappe disponibili:
+
+```powershell
+git tag --list "tappa-*"
+```
+
+Per compilare tutte le tappe con un solo comando:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-tappe.ps1 -SfmlDir "C:/libs/SFML-3.0.0/lib/cmake/SFML"
+```
+
+Gli eseguibili vengono generati nelle sottocartelle di `build/tappe/`.
 
 ## Comandi
 
