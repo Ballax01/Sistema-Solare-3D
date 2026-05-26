@@ -75,7 +75,7 @@ Il post-build copia automaticamente le DLL di SFML nella cartella dell'eseguibil
 
 ## Tappe di sviluppo
 
-Le tappe di sviluppo sono versionate tramite tag Git da `tappa-01` a `tappa-23`.
+Le tappe di sviluppo sono versionate tramite tag Git da `tappa-01` a `tappa-24`.
 
 Per vedere le tappe disponibili:
 
@@ -175,6 +175,7 @@ tappa-20  Rifinitura comandi interattivi
 tappa-21  Camera libera
 tappa-22  Documentazione finale e relazione
 tappa-23  Relazione dettagliata del progetto
+tappa-24  Preparazione consegna finale
 ```
 
 Per controllare i tag:
