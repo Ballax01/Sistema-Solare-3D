@@ -20,6 +20,7 @@ Il progetto e stato sviluppato su Windows.
 sistema-solare-3d/
   CMakeLists.txt
   README.md
+  Relazione_SistemaSolare3D.docx
   src/
     main.cpp
     glad.c
@@ -172,6 +173,8 @@ tappa-18  Atmosfera, nuvole e night map
 tappa-19  Sfondo stellato
 tappa-20  Rifinitura comandi interattivi
 tappa-21  Camera libera
+tappa-22  Documentazione finale e relazione
+tappa-23  Relazione dettagliata del progetto
 ```
 
 Per controllare i tag:
