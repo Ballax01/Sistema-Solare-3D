@@ -40,6 +40,19 @@ foreach ($tag in $tags) {
     tar -xf $archivePath -C $tagSource
     Remove-Item -LiteralPath $archivePath -Force
 
+    $cmakeFile = Join-Path $tagSource "CMakeLists.txt"
+    if (Test-Path $cmakeFile) {
+        $cmakeText = Get-Content -LiteralPath $cmakeFile -Raw
+        $sfmlConfig = @'
+set(SFML_ROOT "" CACHE PATH "Percorso opzionale alla cartella principale di SFML")
+if(SFML_ROOT AND NOT SFML_DIR)
+    set(SFML_DIR "${SFML_ROOT}/lib/cmake/SFML")
+endif()
+'@
+        $cmakeText = $cmakeText -replace '(?m)^set\(SFML_DIR\s+"[^"]+"\)\s*$', $sfmlConfig
+        Set-Content -LiteralPath $cmakeFile -Value $cmakeText -NoNewline
+    }
+
     $configureArgs = @("-S", $tagSource, "-B", $tagBuild)
     if ($SfmlDir) {
         $configureArgs += "-DSFML_DIR=$SfmlDir"
