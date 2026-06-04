@@ -229,7 +229,7 @@ Se una texture non viene trovata, il programma genera una texture procedurale di
 
 ## Difficolta incontrate
 
-- Integrazione tra OpenGL Core e SFML: il progetto usa il profilo Core (`Attribute::Core`) e `sf::Window`. Il pannello informativo e il testo 2D sono stati implementati con OpenGL puro e stb_truetype, evitando SFML::Graphics.
+- Integrazione tra OpenGL Core e SFML: il progetto usa il profilo Core (`Attribute::Core`) e `sf::Window`. Il pannello informativo e il testo 2D sono stati implementati con OpenGL puro e stb_truetype, senza usare SFML::Window o moduli grafici aggiuntivi.
 - Disegno dell'interfaccia 2D sopra la scena 3D: e stato necessario gestire gli stati OpenGL/SFML e aggiornare la view 2D dopo il resize della finestra.
 - Texture dell'anello di Saturno: la prima mappatura UV produceva deformazioni visibili; la soluzione e stata usare coordinate UV radiali.
 - Scala del sistema solare: le distanze reali sono state compresse per mantenere il progetto navigabile.
