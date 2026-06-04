@@ -26,6 +26,7 @@ int main()
     settings.majorVersion = 4;
     settings.minorVersion = 1;
 
+    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
     sf::Window window(
         sf::VideoMode({1280, 720}),
         "Sistema Solare 3D - Tappa 02",
