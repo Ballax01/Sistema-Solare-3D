@@ -19,6 +19,8 @@ set(SFML_BUILD_AUDIO    OFF CACHE BOOL "" FORCE)
 set(SFML_BUILD_NETWORK  OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SFML)
 
+find_package(OpenGL REQUIRED)
+
 add_executable(SistemaSolare3D
     src/main.cpp
     src/glad.c
@@ -31,5 +33,5 @@ target_include_directories(SistemaSolare3D PRIVATE
 target_link_libraries(SistemaSolare3D PRIVATE
     SFML::Window
     SFML::System
-    opengl32
+    OpenGL::GL
 )
