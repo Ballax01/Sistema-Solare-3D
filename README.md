@@ -8,7 +8,7 @@ Il progetto mostra il Sole, gli 8 pianeti, la Luna, orbite ellittiche, texture r
 
 - C++17
 - CMake
-- SFML 3.0 per finestra, input, ciclo principale, immagini e testo 2D
+- SFML 3.0 (solo Window/System) per finestra, input e ciclo principale — scaricato automaticamente con FetchContent
 - OpenGL 4.1 con glad
 - GLM per matrici, trasformazioni e calcoli matematici
 
@@ -49,29 +49,38 @@ sistema-solare-3d/
     build-tappe.ps1
 ```
 
+## Dipendenze
+
+- **CMake >= 3.21**
+- **Compilatore C++17** (MSVC, GCC, Clang)
+- **SFML 3.0** — scaricato automaticamente da CMake tramite FetchContent, non richiede installazione manuale
+- **OpenGL** — fornito dal sistema operativo/driver della scheda grafica
+- **glad, GLM, stb_image, stb_truetype** — inclusi nel repository in `include/`
+
 ## Build
 
-Il file `CMakeLists.txt` non contiene path assoluti. Se SFML non viene trovato automaticamente, indicare a CMake la cartella di configurazione di SFML:
+Non e necessario installare SFML. CMake lo scarica automaticamente durante la configurazione.
+
+**Windows (PowerShell):**
 
 ```powershell
-cmake -S . -B build -DSFML_DIR="C:/libs/SFML-3.0.0/lib/cmake/SFML"
+cmake -S . -B build
 cmake --build build --config Debug
 ```
 
-In alternativa si puo indicare la cartella principale di SFML:
+**Linux / macOS:**
 
-```powershell
-cmake -S . -B build -DSFML_ROOT="C:/libs/SFML-3.0.0"
-cmake --build build --config Debug
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
 ```
 
-Eseguibile generato:
+**Eseguibile generato:**
 
 ```text
-build/Debug/SistemaSolare3D.exe
+build/Debug/SistemaSolare3D.exe        (Windows)
+build/SistemaSolare3D                  (Linux/macOS)
 ```
-
-Il post-build copia automaticamente le DLL di SFML nella cartella dell'eseguibile.
 
 ## Tappe di sviluppo
 
@@ -86,7 +95,13 @@ git tag --list "tappa-*"
 Per compilare tutte le tappe con un solo comando:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build-tappe.ps1 -SfmlDir "C:/libs/SFML-3.0.0/lib/cmake/SFML"
+powershell -ExecutionPolicy Bypass -File scripts/build-tappe.ps1
+```
+
+Su Linux/macOS:
+
+```bash
+bash scripts/build-tappe.sh
 ```
 
 Gli eseguibili vengono generati nelle sottocartelle di `build/tappe/`.
@@ -130,7 +145,7 @@ ESC                        Chiude
 - Distanze di scena ispirate alle distanze reali in UA, compresse per rendere la scena esplorabile.
 - Orbite ellittiche con eccentricita simulata.
 - Selezione di Sole, Luna e pianeti con mouse o tastiera.
-- Pannello informativo SFML con caratteristiche reali e scala di scena.
+- Pannello informativo con testo renderizzato via OpenGL e stb_truetype.
 - Camera orbitale e camera libera.
 - Luna in orbita attorno alla Terra.
 - Anello texturizzato di Saturno, inclinato e in leggera rotazione.
@@ -214,7 +229,7 @@ Se una texture non viene trovata, il programma genera una texture procedurale di
 
 ## Difficolta incontrate
 
-- Integrazione tra OpenGL moderno e SFML Graphics: il profilo OpenGL Core causava errori con alcune chiamate usate internamente da SFML per il rendering 2D. La soluzione e stata usare un contesto compatibile con SFML Graphics.
+- Integrazione tra OpenGL Core e SFML: il progetto usa il profilo Core (`Attribute::Core`) e `sf::Window`. Il pannello informativo e il testo 2D sono stati implementati con OpenGL puro e stb_truetype, evitando SFML::Graphics.
 - Disegno dell'interfaccia 2D sopra la scena 3D: e stato necessario gestire gli stati OpenGL/SFML e aggiornare la view 2D dopo il resize della finestra.
 - Texture dell'anello di Saturno: la prima mappatura UV produceva deformazioni visibili; la soluzione e stata usare coordinate UV radiali.
 - Scala del sistema solare: le distanze reali sono state compresse per mantenere il progetto navigabile.
