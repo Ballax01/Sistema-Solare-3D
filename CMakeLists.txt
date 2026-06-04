@@ -1,16 +1,34 @@
-cmake_minimum_required(VERSION 3.21)
+﻿cmake_minimum_required(VERSION 3.21)
 
 project(SistemaSolare3D LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(SFML_ROOT "" CACHE PATH "Percorso opzionale alla cartella principale di SFML")
-if(SFML_ROOT AND NOT SFML_DIR)
-    set(SFML_DIR "${SFML_ROOT}/lib/cmake/SFML")
-endif()
+include(FetchContent)
 
-find_package(SFML 3.0 REQUIRED COMPONENTS Window Graphics System)
+FetchContent_Declare(
+    SFML
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG        3.0.0
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+FetchContent_MakeAvailable(SFML)
+
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG        VER-2-13-3
+    GIT_SHALLOW    TRUE
+    SYSTEM
+)
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(freetype)
 
 add_executable(SistemaSolare3D
     src/main.cpp
@@ -25,14 +43,6 @@ target_link_libraries(SistemaSolare3D PRIVATE
     SFML::Window
     SFML::Graphics
     SFML::System
+    freetype
     opengl32
 )
-
-if(WIN32)
-    add_custom_command(TARGET SistemaSolare3D POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_RUNTIME_DLLS:SistemaSolare3D>
-        $<TARGET_FILE_DIR:SistemaSolare3D>
-        COMMAND_EXPAND_LISTS
-    )
-endif()

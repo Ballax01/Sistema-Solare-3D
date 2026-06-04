@@ -2,6 +2,8 @@
 #include <SFML/Window.hpp>
 #include <SFML/System.hpp>
 #include <glad/glad.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -65,6 +67,31 @@ struct PlanetScreenInfo
     float y;
     float radius;
 };
+
+// ── Rendering 2D (FreeType + OpenGL Core) ────────────────────────────────────
+
+struct GlyphInfo
+{
+    int atlasX, atlasY;
+    int width, height;
+    int bearingX, bearingY;
+    int advance;
+};
+
+static const int UI_ATLAS_W    = 512;
+static const int UI_ATLAS_H    = 256;
+static const int UI_FONT_PX    = 18;
+static const int UI_FIRST_CHAR = 32;
+static const int UI_LAST_CHAR  = 126;
+
+static GlyphInfo s_glyphs[UI_LAST_CHAR - UI_FIRST_CHAR + 1] = {};
+static GLuint    s_atlasTexture = 0;
+static GLuint    s_uiShader     = 0;
+static GLuint    s_uiVAO        = 0;
+static GLuint    s_uiVBO        = 0;
+static glm::mat4 s_uiProj;
+static bool      s_fontOk = false;
+
 
 GLuint compileShader(GLenum type, const char* source)
 {
@@ -246,6 +273,278 @@ GLuint createShaderProgram()
     glDeleteShader(fragmentShader);
 
     return shaderProgram;
+}
+
+
+GLuint createUiShader()
+{
+    const char* vs = R"(
+        #version 410 core
+        layout (location = 0) in vec4 vertex;
+        uniform mat4 projection;
+        out vec2 TexCoords;
+        void main() {
+            gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
+            TexCoords = vertex.zw;
+        }
+    )";
+
+    const char* fs = R"(
+        #version 410 core
+        in vec2 TexCoords;
+        out vec4 FragColor;
+        uniform sampler2D atlas;
+        uniform vec4      color;
+        uniform bool      useTexture;
+        void main() {
+            if (useTexture) {
+                float a = texture(atlas, TexCoords).r;
+                FragColor = vec4(color.rgb, color.a * a);
+            } else {
+                FragColor = color;
+            }
+        }
+    )";
+
+    GLuint program = glCreateProgram();
+    GLuint vert = compileShader(GL_VERTEX_SHADER,   vs);
+    GLuint frag = compileShader(GL_FRAGMENT_SHADER, fs);
+    glAttachShader(program, vert);
+    glAttachShader(program, frag);
+    glLinkProgram(program);
+    glDeleteShader(vert);
+    glDeleteShader(frag);
+    return program;
+}
+
+bool initFontAtlas()
+{
+    const std::vector<std::string> fontPaths = {
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/calibri.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
+        "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf"
+    };
+
+    FT_Library ft;
+    if (FT_Init_FreeType(&ft))
+    {
+        std::cerr << "FreeType: init fallita
+";
+        return false;
+    }
+
+    FT_Face face = nullptr;
+    for (const auto& path : fontPaths)
+    {
+        if (FT_New_Face(ft, path.c_str(), 0, &face) == 0)
+        {
+            break;
+        }
+        face = nullptr;
+    }
+
+    if (!face)
+    {
+        std::cerr << "FreeType: nessun font trovato
+";
+        FT_Done_FreeType(ft);
+        return false;
+    }
+
+    FT_Set_Pixel_Sizes(face, 0, static_cast<FT_UInt>(UI_FONT_PX));
+
+    // Crea texture atlas monocromatica
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(1, &s_atlasTexture);
+    glBindTexture(GL_TEXTURE_2D, s_atlasTexture);
+
+    std::vector<unsigned char> blank(UI_ATLAS_W * UI_ATLAS_H, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, UI_ATLAS_W, UI_ATLAS_H, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, blank.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    int penX = 0, penY = 0, rowH = 0;
+
+    for (int c = UI_FIRST_CHAR; c <= UI_LAST_CHAR; ++c)
+    {
+        if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER))
+            continue;
+
+        FT_GlyphSlot g = face->glyph;
+        int bw = static_cast<int>(g->bitmap.width);
+        int bh = static_cast<int>(g->bitmap.rows);
+
+        if (penX + bw > UI_ATLAS_W)
+        {
+            penX = 0;
+            penY += rowH + 2;
+            rowH = 0;
+        }
+
+        if (bh > rowH) rowH = bh;
+
+        GlyphInfo& gi = s_glyphs[c - UI_FIRST_CHAR];
+        gi.atlasX   = penX;
+        gi.atlasY   = penY;
+        gi.width    = bw;
+        gi.height   = bh;
+        gi.bearingX = g->bitmap_left;
+        gi.bearingY = g->bitmap_top;
+        gi.advance  = static_cast<int>(g->advance.x >> 6);
+
+        if (bw > 0 && bh > 0)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, penX, penY, bw, bh,
+                            GL_RED, GL_UNSIGNED_BYTE, g->bitmap.buffer);
+        }
+
+        penX += bw + 2;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+    return true;
+}
+
+bool initUI(unsigned int winW, unsigned int winH)
+{
+    s_uiShader = createUiShader();
+
+    if (!initFontAtlas())
+    {
+        return false;
+    }
+
+    // VAO / VBO per quad dinamici 2D
+    glGenVertexArrays(1, &s_uiVAO);
+    glGenBuffers(1, &s_uiVBO);
+    glBindVertexArray(s_uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_uiVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * 4, nullptr, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    s_uiProj = glm::ortho(0.0f, static_cast<float>(winW),
+                          static_cast<float>(winH), 0.0f);
+
+    glUseProgram(s_uiShader);
+    glUniformMatrix4fv(
+        glGetUniformLocation(s_uiShader, "projection"), 1, GL_FALSE,
+        glm::value_ptr(s_uiProj));
+    glUniform1i(glGetUniformLocation(s_uiShader, "atlas"), 0);
+
+    s_fontOk = true;
+    return true;
+}
+
+void updateUiProjection(unsigned int winW, unsigned int winH)
+{
+    s_uiProj = glm::ortho(0.0f, static_cast<float>(winW),
+                          static_cast<float>(winH), 0.0f);
+    glUseProgram(s_uiShader);
+    glUniformMatrix4fv(
+        glGetUniformLocation(s_uiShader, "projection"), 1, GL_FALSE,
+        glm::value_ptr(s_uiProj));
+}
+
+void renderRect(float x, float y, float w, float h,
+                float r, float g, float b, float a)
+{
+    glUseProgram(s_uiShader);
+    glUniform4f(glGetUniformLocation(s_uiShader, "color"), r, g, b, a);
+    glUniform1i(glGetUniformLocation(s_uiShader, "useTexture"), 0);
+    glUniformMatrix4fv(
+        glGetUniformLocation(s_uiShader, "projection"), 1, GL_FALSE,
+        glm::value_ptr(s_uiProj));
+
+    float verts[4][4] = {
+        { x,     y,     0.0f, 0.0f },
+        { x + w, y,     1.0f, 0.0f },
+        { x,     y + h, 0.0f, 1.0f },
+        { x + w, y + h, 1.0f, 1.0f }
+    };
+
+    glBindVertexArray(s_uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_uiVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+}
+
+void renderText(const std::string& text, float x, float y,
+                float r, float g, float b, float a)
+{
+    if (!s_fontOk) return;
+
+    glUseProgram(s_uiShader);
+    glUniform4f(glGetUniformLocation(s_uiShader, "color"), r, g, b, a);
+    glUniform1i(glGetUniformLocation(s_uiShader, "useTexture"), 1);
+    glUniformMatrix4fv(
+        glGetUniformLocation(s_uiShader, "projection"), 1, GL_FALSE,
+        glm::value_ptr(s_uiProj));
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, s_atlasTexture);
+
+    glBindVertexArray(s_uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, s_uiVBO);
+
+    float penX = x;
+    float penY = y;
+
+    for (unsigned char c : text)
+    {
+        if (c == '\n')
+        {
+            penX  = x;
+            penY += static_cast<float>(UI_FONT_PX) + 4.0f;
+            continue;
+        }
+
+        if (c < UI_FIRST_CHAR || c > UI_LAST_CHAR) continue;
+
+        const GlyphInfo& gi = s_glyphs[c - UI_FIRST_CHAR];
+
+        float xpos = penX + static_cast<float>(gi.bearingX);
+        float ypos = penY + static_cast<float>(UI_FONT_PX - gi.bearingY);
+        float fw   = static_cast<float>(gi.width);
+        float fh   = static_cast<float>(gi.height);
+
+        float u0 = static_cast<float>(gi.atlasX)             / static_cast<float>(UI_ATLAS_W);
+        float v0 = static_cast<float>(gi.atlasY)             / static_cast<float>(UI_ATLAS_H);
+        float u1 = static_cast<float>(gi.atlasX + gi.width)  / static_cast<float>(UI_ATLAS_W);
+        float v1 = static_cast<float>(gi.atlasY + gi.height) / static_cast<float>(UI_ATLAS_H);
+
+        float verts[4][4] = {
+            { xpos,      ypos,      u0, v0 },
+            { xpos + fw, ypos,      u1, v0 },
+            { xpos,      ypos + fh, u0, v1 },
+            { xpos + fw, ypos + fh, u1, v1 }
+        };
+
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        penX += static_cast<float>(gi.advance);
+    }
+
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void createSphere(
@@ -892,7 +1191,7 @@ void selectPlanet(
     int planetIndex,
     int& selectedPlanetIndex,
     const std::vector<Planet>& planets,
-    sf::RenderWindow& window
+    sf::Window& window
 )
 {
     if (planetIndex >= 0 && planetIndex < static_cast<int>(planets.size()))
@@ -982,7 +1281,7 @@ void selectSun(
     float& previousCameraPitch,
     float& previousCameraDistance,
     const SunInfo& sunInfo,
-    sf::RenderWindow& window
+    sf::Window& window
 )
 {
     if (!isFollowingPlanet)
@@ -1042,169 +1341,6 @@ std::string wrapText(const std::string& text, std::size_t maxLineLength)
 
     result += line;
     return result;
-}
-
-bool loadUIFont(sf::Font& font)
-{
-    const std::vector<std::string> fontPaths = {
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/calibri.ttf"
-    };
-
-    for (const std::string& path : fontPaths)
-    {
-        if (font.openFromFile(path))
-        {
-            return true;
-        }
-    }
-
-    std::cerr << "Avviso: impossibile caricare un font per il pannello informativo.\n";
-    return false;
-}
-
-void drawInfoPanel(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded,
-    const std::vector<Planet>& planets,
-    int selectedPlanetIndex,
-    const SunInfo& sunInfo,
-    bool isSunSelected,
-    const MoonInfo& moonInfo,
-    bool isMoonSelected,
-    unsigned int windowWidth,
-    unsigned int windowHeight
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    float panelWidth = 460.0f;
-
-    if (windowWidth < 620)
-    {
-        panelWidth = static_cast<float>(windowWidth) - 32.0f;
-    }
-
-    const float panelHeight = 244.0f;
-    const float margin = 18.0f;
-    const float x = margin;
-    const float y = static_cast<float>(windowHeight) - panelHeight - margin;
-
-    sf::RectangleShape panel({ panelWidth, panelHeight });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(6, 10, 20, 232));
-    panel.setOutlineColor(sf::Color(120, 148, 205, 235));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    sf::RectangleShape accent({ 4.0f, panelHeight - 24.0f });
-    accent.setPosition({ x + 10.0f, y + 12.0f });
-    accent.setFillColor(sf::Color(255, 208, 96, 210));
-
-    window.draw(accent);
-
-    std::string title = "Nessun corpo selezionato";
-    std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
-    std::string body = wrapText(
-        "Clicca sul Sole o su un pianeta per vedere nome, tipo e descrizione.",
-        maxLineLength
-    );
-
-    if (isSunSelected)
-    {
-        title = sunInfo.name;
-        body =
-            "Tipo: " + sunInfo.type + "\n" +
-            wrapText(sunInfo.description, maxLineLength) + "\n" +
-            "Scala dimensione: " + formatSimulationValue(sunInfo.size, "fattore scala");
-    }
-    else if (isMoonSelected)
-    {
-        title = moonInfo.name;
-        body =
-            "Tipo: " + moonInfo.type + "\n" +
-            wrapText(moonInfo.description, maxLineLength) + "\n" +
-            "Distanza dalla Terra: " + formatSimulationValue(moonInfo.orbitRadius, "unita scena") + "\n" +
-            "Scala dimensione: " + formatSimulationValue(moonInfo.size, "fattore scala");
-    }
-    else if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
-    {
-        const Planet& planet = planets[selectedPlanetIndex];
-        title = planet.name;
-        body =
-            std::string("Caratteristiche principali:\n") +
-            "- Tipo: " + planet.type + "\n" +
-            "- Distanza reale: " + formatRealValue(planet.realDistanceAU, "UA", 3) + "\n" +
-            "- Diametro reale: " + formatRealValue(planet.realDiameterKm, "km", 0) + "\n" +
-            "- Scala scena: " + formatSimulationValue(planet.orbitRadius, "unita") + " / " +
-                formatSimulationValue(planet.size, "raggio") + "\n" +
-            "- Eccentricita: " + formatSimulationValue(planet.orbitEccentricity, "simulata") + "\n" +
-            "Descrizione: " + wrapText(planet.description, maxLineLength);
-    }
-
-    sf::Text titleText(font, title, 23);
-    titleText.setPosition({ x + 24.0f, y + 14.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text bodyText(font, body, 14);
-    bodyText.setPosition({ x + 24.0f, y + 52.0f });
-    bodyText.setFillColor(sf::Color(225, 232, 245));
-    bodyText.setLineSpacing(1.08f);
-
-    window.draw(titleText);
-    window.draw(bodyText);
-}
-
-void drawControlsLegend(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    const float x = 18.0f;
-    const float y = 18.0f;
-    const float width = 640.0f;
-    const float height = 126.0f;
-
-    sf::RectangleShape panel({ width, height });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 190));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 210));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    sf::Text titleText(font, "Comandi", 17);
-    titleText.setPosition({ x + 14.0f, y + 10.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text controlsText(
-        font,
-        "Mouse: trascina camera   rotella: zoom   SPACE: pausa   +/-: velocita\n"
-        "C: camera libera/orbitale   mouse: guarda/trascina   SPACE: pausa   +/-: velocita\n"
-        "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "Orbitale A/D W/S   Libera W/A/S/D Q/E   F: esci follow   1: Sole   2-9: pianeti   ESC: esci",
-        14
-    );
-    controlsText.setPosition({ x + 14.0f, y + 38.0f });
-    controlsText.setFillColor(sf::Color(225, 232, 245));
-    controlsText.setLineSpacing(1.25f);
-
-    window.draw(titleText);
-    window.draw(controlsText);
 }
 
 int findClickedPlanet(
@@ -1271,7 +1407,7 @@ void handleCelestialBodyClick(
     float& previousCameraYaw,
     float& previousCameraPitch,
     float& previousCameraDistance,
-    sf::RenderWindow& window
+    sf::Window& window
 )
 {
     if (isClickOnScreenInfo(mouseX, mouseY, sunScreenInfo))
@@ -1351,6 +1487,120 @@ void handleCelestialBodyClick(
     window.setTitle("Sistema Solare 3D - Tappa 24");
 }
 
+void drawInfoPanel(
+    const std::vector<Planet>& planets,
+    int selectedPlanetIndex,
+    const SunInfo& sunInfo,
+    bool isSunSelected,
+    const MoonInfo& moonInfo,
+    bool isMoonSelected,
+    unsigned int windowWidth,
+    unsigned int windowHeight
+)
+{
+    if (!s_fontOk) return;
+
+    float panelWidth = 460.0f;
+
+    if (windowWidth < 620)
+    {
+        panelWidth = static_cast<float>(windowWidth) - 32.0f;
+    }
+
+    const float panelHeight = 244.0f;
+    const float margin      = 18.0f;
+    const float x           = margin;
+    const float y           = static_cast<float>(windowHeight) - panelHeight - margin;
+
+    // Sfondo pannello
+    renderRect(x, y, panelWidth, panelHeight,
+               6.0f/255.0f, 10.0f/255.0f, 20.0f/255.0f, 232.0f/255.0f);
+    // Bordo
+    renderRect(x,       y,                1.0f, panelHeight, 120.0f/255.0f, 148.0f/255.0f, 205.0f/255.0f, 235.0f/255.0f);
+    renderRect(x + panelWidth - 1.0f, y, 1.0f, panelHeight, 120.0f/255.0f, 148.0f/255.0f, 205.0f/255.0f, 235.0f/255.0f);
+    renderRect(x, y,                       panelWidth, 1.0f, 120.0f/255.0f, 148.0f/255.0f, 205.0f/255.0f, 235.0f/255.0f);
+    renderRect(x, y + panelHeight - 1.0f,  panelWidth, 1.0f, 120.0f/255.0f, 148.0f/255.0f, 205.0f/255.0f, 235.0f/255.0f);
+    // Accento verticale
+    renderRect(x + 10.0f, y + 12.0f, 4.0f, panelHeight - 24.0f,
+               255.0f/255.0f, 208.0f/255.0f, 96.0f/255.0f, 210.0f/255.0f);
+
+    std::size_t maxChars = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
+
+    std::string title = "Nessun corpo selezionato";
+    std::string body  = wrapText(
+        "Clicca sul Sole o su un pianeta per vedere nome, tipo e descrizione.",
+        maxChars
+    );
+
+    if (isSunSelected)
+    {
+        title = sunInfo.name;
+        body  =
+            "Tipo: " + sunInfo.type + "\n" +
+            wrapText(sunInfo.description, maxChars) + "\n" +
+            "Scala dimensione: " + formatSimulationValue(sunInfo.size, "fattore scala");
+    }
+    else if (isMoonSelected)
+    {
+        title = moonInfo.name;
+        body  =
+            "Tipo: " + moonInfo.type + "\n" +
+            wrapText(moonInfo.description, maxChars) + "\n" +
+            "Distanza dalla Terra: " + formatSimulationValue(moonInfo.orbitRadius, "unita scena") + "\n" +
+            "Scala dimensione: " + formatSimulationValue(moonInfo.size, "fattore scala");
+    }
+    else if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
+    {
+        const Planet& planet = planets[selectedPlanetIndex];
+        title = planet.name;
+        body  =
+            std::string("Caratteristiche principali:\n") +
+            "- Tipo: " + planet.type + "\n" +
+            "- Distanza reale: " + formatRealValue(planet.realDistanceAU, "UA", 3) + "\n" +
+            "- Diametro reale: " + formatRealValue(planet.realDiameterKm, "km", 0) + "\n" +
+            "- Scala scena: " + formatSimulationValue(planet.orbitRadius, "unita") + " / " +
+                formatSimulationValue(planet.size, "raggio") + "\n" +
+            "- Eccentricita: " + formatSimulationValue(planet.orbitEccentricity, "simulata") + "\n" +
+            "Descrizione: " + wrapText(planet.description, maxChars);
+    }
+
+    renderText(title, x + 24.0f, y + 18.0f,
+               255.0f/255.0f, 232.0f/255.0f, 140.0f/255.0f, 1.0f);
+    renderText(body,  x + 24.0f, y + 52.0f,
+               225.0f/255.0f, 232.0f/255.0f, 245.0f/255.0f, 1.0f);
+}
+
+void drawControlsLegend()
+{
+    if (!s_fontOk) return;
+
+    const float x      = 18.0f;
+    const float y      = 18.0f;
+    const float width  = 640.0f;
+    const float height = 126.0f;
+
+    // Sfondo
+    renderRect(x, y, width, height,
+               8.0f/255.0f, 12.0f/255.0f, 24.0f/255.0f, 190.0f/255.0f);
+    // Bordo
+    renderRect(x,           y,               1.0f,  height, 95.0f/255.0f, 120.0f/255.0f, 170.0f/255.0f, 210.0f/255.0f);
+    renderRect(x+width-1.f, y,               1.0f,  height, 95.0f/255.0f, 120.0f/255.0f, 170.0f/255.0f, 210.0f/255.0f);
+    renderRect(x,           y,               width, 1.0f,   95.0f/255.0f, 120.0f/255.0f, 170.0f/255.0f, 210.0f/255.0f);
+    renderRect(x,           y+height-1.0f,   width, 1.0f,   95.0f/255.0f, 120.0f/255.0f, 170.0f/255.0f, 210.0f/255.0f);
+
+    renderText("Comandi", x + 14.0f, y + 14.0f,
+               255.0f/255.0f, 232.0f/255.0f, 140.0f/255.0f, 1.0f);
+
+    const std::string controls =
+        "Mouse: trascina camera   rotella: zoom   SPACE: pausa   +/-: velocita\n"
+        "C: camera libera/orbitale   WASD: muovi   Q/E: alto/basso\n"
+        "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
+        "Orbitale A/D W/S   F: esci follow   1: Sole   2-9: pianeti   ESC: esci";
+
+    renderText(controls, x + 14.0f, y + 42.0f,
+               225.0f/255.0f, 232.0f/255.0f, 245.0f/255.0f, 1.0f);
+}
+
 int main()
 {
     unsigned int windowWidth = 1280;
@@ -1361,9 +1611,9 @@ int main()
     settings.stencilBits = 8;
     settings.majorVersion = 4;
     settings.minorVersion = 1;
-    settings.attributeFlags = sf::ContextSettings::Attribute::Default;
+    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
 
-    sf::RenderWindow window(
+    sf::Window window(
         sf::VideoMode({windowWidth, windowHeight}),
         "Sistema Solare 3D - Tappa 24",
         sf::Style::Default,
@@ -1379,18 +1629,13 @@ int main()
         return -1;
     }
 
+    initUI(windowWidth, windowHeight);
+
     glViewport(0, 0, static_cast<GLsizei>(windowWidth), static_cast<GLsizei>(windowHeight));
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
-
-    sf::Font uiFont;
-    bool uiFontLoaded = loadUIFont(uiFont);
-    window.setView(sf::View(sf::FloatRect(
-        { 0.0f, 0.0f },
-        { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-    )));
 
     GLuint shaderProgram = createShaderProgram();
 
@@ -2016,10 +2261,8 @@ int main()
                     glm::value_ptr(projection)
                 );
 
-                window.setView(sf::View(sf::FloatRect(
-                    { 0.0f, 0.0f },
-                    { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-                )));
+                updateUiProjection(windowWidth, windowHeight);
+
             }
         }
 
@@ -2480,19 +2723,11 @@ int main()
         moonScreenInfo.y = static_cast<float>(windowHeight) - projectedMoon.y;
         moonScreenInfo.radius = 18.0f;
 
-        if (showInfoPanel)
+        if (showInfoPanel && s_fontOk)
         {
-            window.pushGLStates();
-            drawControlsLegend(
-                window,
-                uiFont,
-                uiFontLoaded
-            );
-
+            glDisable(GL_DEPTH_TEST);
+            drawControlsLegend();
             drawInfoPanel(
-                window,
-                uiFont,
-                uiFontLoaded,
                 planets,
                 selectedPlanetIndex,
                 sunInfo,
@@ -2502,7 +2737,7 @@ int main()
                 windowWidth,
                 windowHeight
             );
-            window.popGLStates();
+            glEnable(GL_DEPTH_TEST);
         }
 
         window.display();
