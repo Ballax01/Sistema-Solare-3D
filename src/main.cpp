@@ -1,4 +1,3 @@
-#include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
 #include <SFML/System.hpp>
 #include <glad/glad.h>
@@ -311,7 +310,7 @@ void selectPlanet(
     int planetIndex,
     int& selectedPlanetIndex,
     const std::vector<Planet>& planets,
-    sf::RenderWindow& window
+    sf::Window& window
 )
 {
     if (planetIndex >= 0 && planetIndex < static_cast<int>(planets.size()))
@@ -404,160 +403,6 @@ int planetIndexFromKey(sf::Keyboard::Key key)
     return -1;
 }
 
-std::string wrapText(const std::string& text, std::size_t maxLineLength)
-{
-    std::istringstream words(text);
-    std::string word;
-    std::string line;
-    std::string result;
-
-    while (words >> word)
-    {
-        if (!line.empty() && line.size() + 1 + word.size() > maxLineLength)
-        {
-            result += line + "\n";
-            line.clear();
-        }
-
-        if (!line.empty())
-        {
-            line += " ";
-        }
-
-        line += word;
-    }
-
-    result += line;
-    return result;
-}
-
-bool loadUIFont(sf::Font& font)
-{
-    const std::vector<std::string> fontPaths = {
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/calibri.ttf"
-    };
-
-    for (const std::string& path : fontPaths)
-    {
-        if (font.openFromFile(path))
-        {
-            return true;
-        }
-    }
-
-    std::cerr << "Avviso: impossibile caricare un font per il pannello informativo.\n";
-    return false;
-}
-
-void drawInfoPanel(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded,
-    const std::vector<Planet>& planets,
-    int selectedPlanetIndex,
-    unsigned int windowWidth,
-    unsigned int windowHeight
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    float panelWidth = 360.0f;
-
-    if (windowWidth < 520)
-    {
-        panelWidth = static_cast<float>(windowWidth) - 32.0f;
-    }
-
-    const float panelHeight = 158.0f;
-    const float margin = 18.0f;
-    const float x = margin;
-    const float y = static_cast<float>(windowHeight) - panelHeight - margin;
-
-    sf::RectangleShape panel({ panelWidth, panelHeight });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 220));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 230));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    std::string title = "Nessun pianeta";
-    std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
-    std::string body = wrapText(
-        "Clicca su un pianeta per vedere nome, tipo e descrizione.",
-        maxLineLength
-    );
-
-    if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
-    {
-        const Planet& planet = planets[selectedPlanetIndex];
-        title = planet.name;
-        body = "Tipo: " + planet.type + "\n" + wrapText(planet.description, maxLineLength);
-    }
-
-    sf::Text titleText(font, title, 22);
-    titleText.setPosition({ x + 18.0f, y + 16.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text bodyText(font, body, 16);
-    bodyText.setPosition({ x + 18.0f, y + 52.0f });
-    bodyText.setFillColor(sf::Color(225, 232, 245));
-    bodyText.setLineSpacing(1.18f);
-
-    window.draw(titleText);
-    window.draw(bodyText);
-}
-
-void drawControlsLegend(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    const float x = 18.0f;
-    const float y = 18.0f;
-    const float width = 520.0f;
-    const float height = 106.0f;
-
-    sf::RectangleShape panel({ width, height });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 190));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 210));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    sf::Text titleText(font, "Comandi", 17);
-    titleText.setPosition({ x + 14.0f, y + 10.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text controlsText(
-        font,
-        "Frecce: ruota camera   W/S: zoom   SPACE: pausa   +/-: velocita\n"
-        "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "F: esci follow   1-8: pianeti   ESC: esci",
-        14
-    );
-    controlsText.setPosition({ x + 14.0f, y + 38.0f });
-    controlsText.setFillColor(sf::Color(225, 232, 245));
-    controlsText.setLineSpacing(1.25f);
-
-    window.draw(titleText);
-    window.draw(controlsText);
-}
-
 int findClickedPlanet(
     int mouseX,
     int mouseY,
@@ -600,9 +445,9 @@ int main()
     settings.stencilBits = 8;
     settings.majorVersion = 4;
     settings.minorVersion = 1;
-    settings.attributeFlags = sf::ContextSettings::Attribute::Default;
+    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
 
-    sf::RenderWindow window(
+    sf::Window window(
         sf::VideoMode({windowWidth, windowHeight}),
         "Sistema Solare 3D - Tappa 11",
         sf::Style::Default,
@@ -621,13 +466,6 @@ int main()
     glViewport(0, 0, static_cast<GLsizei>(windowWidth), static_cast<GLsizei>(windowHeight));
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
-
-    sf::Font uiFont;
-    bool uiFontLoaded = loadUIFont(uiFont);
-    window.setView(sf::View(sf::FloatRect(
-        { 0.0f, 0.0f },
-        { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-    )));
 
     GLuint shaderProgram = createShaderProgram();
 
@@ -812,7 +650,6 @@ int main()
     bool isPaused = false;
     float timeScale = 1.0f;
     bool showOrbits = true;
-    bool showInfoPanel = true;
     bool isFollowingPlanet = false;
     float previousCameraYaw = cameraYaw;
     float previousCameraPitch = cameraPitch;
@@ -911,14 +748,7 @@ int main()
                     showOrbits = !showOrbits;
                     std::cout << (showOrbits ? "Orbite visibili.\n" : "Orbite nascoste.\n");
                 }
-
-                if (keyPressed->code == sf::Keyboard::Key::I)
-                {
-                    showInfoPanel = !showInfoPanel;
-                    std::cout << (showInfoPanel ? "Pannello informativo visibile.\n" : "Pannello informativo nascosto.\n");
-                }
-
-                int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
+int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
 
                 if (keyboardPlanetIndex != -1)
                 {
@@ -1007,10 +837,6 @@ int main()
                     glm::value_ptr(projection)
                 );
 
-                window.setView(sf::View(sf::FloatRect(
-                    { 0.0f, 0.0f },
-                    { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-                )));
             }
         }
 
@@ -1181,27 +1007,6 @@ int main()
                     approximateRadius
                 }
             );
-        }
-
-        if (showInfoPanel)
-        {
-            window.pushGLStates();
-            drawControlsLegend(
-                window,
-                uiFont,
-                uiFontLoaded
-            );
-
-            drawInfoPanel(
-                window,
-                uiFont,
-                uiFontLoaded,
-                planets,
-                selectedPlanetIndex,
-                windowWidth,
-                windowHeight
-            );
-            window.popGLStates();
         }
 
         window.display();
