@@ -14,21 +14,10 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
     SYSTEM
 )
+set(SFML_BUILD_GRAPHICS OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_AUDIO    OFF CACHE BOOL "" FORCE)
+set(SFML_BUILD_NETWORK  OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(SFML)
-
-FetchContent_Declare(
-    freetype
-    GIT_REPOSITORY https://github.com/freetype/freetype.git
-    GIT_TAG        VER-2-13-3
-    GIT_SHALLOW    TRUE
-    SYSTEM
-)
-set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
-set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
-set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
-set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
-set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(freetype)
 
 add_executable(SistemaSolare3D
     src/main.cpp
@@ -41,8 +30,6 @@ target_include_directories(SistemaSolare3D PRIVATE
 
 target_link_libraries(SistemaSolare3D PRIVATE
     SFML::Window
-    SFML::Graphics
     SFML::System
-    freetype
     opengl32
 )

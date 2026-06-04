@@ -1,15 +1,17 @@
-#include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#define STB_TRUETYPE_IMPLEMENTATION
+#include <stb_truetype.h>
 #include <SFML/System.hpp>
 #include <glad/glad.h>
-#include <ft2build.h>
-#include FT_FREETYPE_H
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -323,66 +325,54 @@ bool initFontAtlas()
         "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/calibri.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
         "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
-        "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/Library/Fonts/Arial.ttf"
+        "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf"
     };
 
-    FT_Library ft;
-    if (FT_Init_FreeType(&ft))
-    {
-        std::cerr << "FreeType: init fallita
-";
-        return false;
-    }
-
-    FT_Face face = nullptr;
+    std::vector<unsigned char> fontBuffer;
     for (const auto& path : fontPaths)
     {
-        if (FT_New_Face(ft, path.c_str(), 0, &face) == 0)
-        {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file) continue;
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        fontBuffer.resize(static_cast<std::size_t>(size));
+        if (file.read(reinterpret_cast<char*>(fontBuffer.data()), size))
             break;
-        }
-        face = nullptr;
+        fontBuffer.clear();
     }
 
-    if (!face)
+    if (fontBuffer.empty())
     {
-        std::cerr << "FreeType: nessun font trovato
-";
-        FT_Done_FreeType(ft);
+        std::cerr << "Pannello: nessun font di sistema trovato.\n";
         return false;
     }
 
-    FT_Set_Pixel_Sizes(face, 0, static_cast<FT_UInt>(UI_FONT_PX));
+    stbtt_fontinfo font;
+    if (!stbtt_InitFont(&font, fontBuffer.data(), 0))
+    {
+        std::cerr << "Pannello: font non valido.\n";
+        return false;
+    }
 
-    // Crea texture atlas monocromatica
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glGenTextures(1, &s_atlasTexture);
-    glBindTexture(GL_TEXTURE_2D, s_atlasTexture);
+    float scale = stbtt_ScaleForPixelHeight(&font, static_cast<float>(UI_FONT_PX));
 
-    std::vector<unsigned char> blank(UI_ATLAS_W * UI_ATLAS_H, 0);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, UI_ATLAS_W, UI_ATLAS_H, 0,
-                 GL_RED, GL_UNSIGNED_BYTE, blank.data());
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    std::vector<unsigned char> atlas(UI_ATLAS_W * UI_ATLAS_H, 0);
 
     int penX = 0, penY = 0, rowH = 0;
 
     for (int c = UI_FIRST_CHAR; c <= UI_LAST_CHAR; ++c)
     {
-        if (FT_Load_Char(face, static_cast<FT_ULong>(c), FT_LOAD_RENDER))
-            continue;
+        int advance, lsb, x0, y0, x1, y1;
+        stbtt_GetCodepointHMetrics(&font, c, &advance, &lsb);
+        stbtt_GetCodepointBitmapBox(&font, c, scale, scale, &x0, &y0, &x1, &y1);
 
-        FT_GlyphSlot g = face->glyph;
-        int bw = static_cast<int>(g->bitmap.width);
-        int bh = static_cast<int>(g->bitmap.rows);
+        int bw = x1 - x0;
+        int bh = y1 - y0;
 
         if (penX + bw > UI_ATLAS_W)
         {
@@ -398,24 +388,35 @@ bool initFontAtlas()
         gi.atlasY   = penY;
         gi.width    = bw;
         gi.height   = bh;
-        gi.bearingX = g->bitmap_left;
-        gi.bearingY = g->bitmap_top;
-        gi.advance  = static_cast<int>(g->advance.x >> 6);
+        gi.bearingX = x0;
+        gi.bearingY = -y0;
+        gi.advance  = static_cast<int>(std::round(advance * scale));
 
         if (bw > 0 && bh > 0)
         {
-            glTexSubImage2D(GL_TEXTURE_2D, 0, penX, penY, bw, bh,
-                            GL_RED, GL_UNSIGNED_BYTE, g->bitmap.buffer);
+            stbtt_MakeCodepointBitmap(
+                &font,
+                atlas.data() + penY * UI_ATLAS_W + penX,
+                bw, bh, UI_ATLAS_W,
+                scale, scale, c
+            );
         }
 
         penX += bw + 2;
     }
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glGenTextures(1, &s_atlasTexture);
+    glBindTexture(GL_TEXTURE_2D, s_atlasTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, UI_ATLAS_W, UI_ATLAS_H, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, atlas.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindTexture(GL_TEXTURE_2D, 0);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
     return true;
 }
 
@@ -832,8 +833,6 @@ GLuint createProceduralTexture(int textureType)
 
 GLuint loadTextureFromFile(const std::string& path, int fallbackTextureType)
 {
-    sf::Image image;
-
     std::vector<std::string> candidatePaths = {
         path,
         "../" + path,
@@ -841,55 +840,49 @@ GLuint loadTextureFromFile(const std::string& path, int fallbackTextureType)
         "../../../" + path
     };
 
+    int width = 0, height = 0, channels = 0;
+    unsigned char* pixels = nullptr;
     std::string loadedPath;
+
+    stbi_set_flip_vertically_on_load(0);
 
     for (const std::string& candidatePath : candidatePaths)
     {
-        if (image.loadFromFile(candidatePath))
+        pixels = stbi_load(candidatePath.c_str(), &width, &height, &channels, 4);
+        if (pixels)
         {
             loadedPath = candidatePath;
             break;
         }
     }
 
-    if (loadedPath.empty())
+    if (!pixels)
     {
         std::cerr << "Impossibile caricare la texture: " << path
                   << ". Uso texture procedurale di fallback.\n";
         return createProceduralTexture(fallbackTextureType);
     }
 
-   
-
-    sf::Vector2u size = image.getSize();
-
     GLuint textureID = 0;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        static_cast<GLsizei>(size.x),
-        static_cast<GLsizei>(size.y),
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        image.getPixelsPtr()
+        GL_TEXTURE_2D, 0, GL_RGBA,
+        static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+        0, GL_RGBA, GL_UNSIGNED_BYTE, pixels
     );
 
-    glGenerateMipmap(GL_TEXTURE_2D);
+    stbi_image_free(pixels);
 
+    glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
     glBindTexture(GL_TEXTURE_2D, 0);
 
     std::cout << "Texture caricata: " << loadedPath << "\n";
-
     return textureID;
 }
 
