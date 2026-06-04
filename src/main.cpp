@@ -1,5 +1,6 @@
-#include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 #include <SFML/System.hpp>
 #include <glad/glad.h>
 
@@ -8,6 +9,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -330,7 +332,6 @@ void createRing(
     }
 }
 
-
 float pseudoNoise(float x, float y, float seed)
 {
     float value = std::sin(x * 12.9898f + y * 78.233f + seed * 37.719f) * 43758.5453f;
@@ -498,67 +499,45 @@ GLuint createProceduralTexture(int textureType)
     return textureID;
 }
 
-
 GLuint loadTextureFromFile(const std::string& path, int fallbackTextureType)
 {
-    sf::Image image;
-
     std::vector<std::string> candidatePaths = {
-        path,
-        "../" + path,
-        "../../" + path,
-        "../../../" + path
+        path, "../" + path, "../../" + path, "../../../" + path
     };
 
+    int width = 0, height = 0, channels = 0;
+    unsigned char* pixels = nullptr;
     std::string loadedPath;
+
+    stbi_set_flip_vertically_on_load(0);
 
     for (const std::string& candidatePath : candidatePaths)
     {
-        if (image.loadFromFile(candidatePath))
-        {
-            loadedPath = candidatePath;
-            break;
-        }
+        pixels = stbi_load(candidatePath.c_str(), &width, &height, &channels, 4);
+        if (pixels) { loadedPath = candidatePath; break; }
     }
 
-    if (loadedPath.empty())
+    if (!pixels)
     {
         std::cerr << "Impossibile caricare la texture: " << path
                   << ". Uso texture procedurale di fallback.\n";
         return createProceduralTexture(fallbackTextureType);
     }
 
-   
-
-    sf::Vector2u size = image.getSize();
-
     GLuint textureID = 0;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
-
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA,
-        static_cast<GLsizei>(size.x),
-        static_cast<GLsizei>(size.y),
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        image.getPixelsPtr()
-    );
-
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+        static_cast<GLsizei>(width), static_cast<GLsizei>(height),
+        0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    stbi_image_free(pixels);
     glGenerateMipmap(GL_TEXTURE_2D);
-
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
     glBindTexture(GL_TEXTURE_2D, 0);
-
     std::cout << "Texture caricata: " << loadedPath << "\n";
-
     return textureID;
 }
 
@@ -836,7 +815,7 @@ void selectPlanet(
     int planetIndex,
     int& selectedPlanetIndex,
     const std::vector<Planet>& planets,
-    sf::RenderWindow& window
+    sf::Window& window
 )
 {
     if (planetIndex >= 0 && planetIndex < static_cast<int>(planets.size()))
@@ -929,185 +908,6 @@ int planetIndexFromKey(sf::Keyboard::Key key)
     return -1;
 }
 
-std::string wrapText(const std::string& text, std::size_t maxLineLength)
-{
-    std::istringstream words(text);
-    std::string word;
-    std::string line;
-    std::string result;
-
-    while (words >> word)
-    {
-        if (!line.empty() && line.size() + 1 + word.size() > maxLineLength)
-        {
-            result += line + "\n";
-            line.clear();
-        }
-
-        if (!line.empty())
-        {
-            line += " ";
-        }
-
-        line += word;
-    }
-
-    result += line;
-    return result;
-}
-
-bool loadUIFont(sf::Font& font)
-{
-    const std::vector<std::string> fontPaths = {
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/calibri.ttf"
-    };
-
-    for (const std::string& path : fontPaths)
-    {
-        if (font.openFromFile(path))
-        {
-            return true;
-        }
-    }
-
-    std::cerr << "Avviso: impossibile caricare un font per il pannello informativo.\n";
-    return false;
-}
-
-void drawInfoPanel(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded,
-    const std::vector<Planet>& planets,
-    int selectedPlanetIndex,
-    const SunInfo& sunInfo,
-    bool isSunSelected,
-    const MoonInfo& moonInfo,
-    bool isMoonSelected,
-    unsigned int windowWidth,
-    unsigned int windowHeight
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    float panelWidth = 360.0f;
-
-    if (windowWidth < 520)
-    {
-        panelWidth = static_cast<float>(windowWidth) - 32.0f;
-    }
-
-    const float panelHeight = 196.0f;
-    const float margin = 18.0f;
-    const float x = margin;
-    const float y = static_cast<float>(windowHeight) - panelHeight - margin;
-
-    sf::RectangleShape panel({ panelWidth, panelHeight });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 220));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 230));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    std::string title = "Nessun corpo selezionato";
-    std::size_t maxLineLength = static_cast<std::size_t>((panelWidth - 36.0f) / 8.5f);
-    std::string body = wrapText(
-        "Clicca sul Sole o su un pianeta per vedere nome, tipo e descrizione.",
-        maxLineLength
-    );
-
-    if (isSunSelected)
-    {
-        title = sunInfo.name;
-        body =
-            "Tipo: " + sunInfo.type + "\n" +
-            wrapText(sunInfo.description, maxLineLength) + "\n" +
-            "Scala dimensione: " + formatSimulationValue(sunInfo.size, "fattore scala");
-    }
-    else if (isMoonSelected)
-    {
-        title = moonInfo.name;
-        body =
-            "Tipo: " + moonInfo.type + "\n" +
-            wrapText(moonInfo.description, maxLineLength) + "\n" +
-            "Distanza dalla Terra: " + formatSimulationValue(moonInfo.orbitRadius, "unita scena") + "\n" +
-            "Scala dimensione: " + formatSimulationValue(moonInfo.size, "fattore scala");
-    }
-    else if (selectedPlanetIndex >= 0 && selectedPlanetIndex < static_cast<int>(planets.size()))
-    {
-        const Planet& planet = planets[selectedPlanetIndex];
-        title = planet.name;
-        body =
-            "Tipo: " + planet.type + "\n" +
-            wrapText(planet.description, maxLineLength) + "\n" +
-            "Distanza orbitale simulata: " + formatSimulationValue(planet.orbitRadius, "unita scena") + "\n" +
-            "Scala dimensione: " + formatSimulationValue(planet.size, "fattore scala");
-    }
-
-    sf::Text titleText(font, title, 22);
-    titleText.setPosition({ x + 18.0f, y + 16.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text bodyText(font, body, 16);
-    bodyText.setPosition({ x + 18.0f, y + 52.0f });
-    bodyText.setFillColor(sf::Color(225, 232, 245));
-    bodyText.setLineSpacing(1.18f);
-
-    window.draw(titleText);
-    window.draw(bodyText);
-}
-
-void drawControlsLegend(
-    sf::RenderWindow& window,
-    const sf::Font& font,
-    bool fontLoaded
-)
-{
-    if (!fontLoaded)
-    {
-        return;
-    }
-
-    const float x = 18.0f;
-    const float y = 18.0f;
-    const float width = 520.0f;
-    const float height = 106.0f;
-
-    sf::RectangleShape panel({ width, height });
-    panel.setPosition({ x, y });
-    panel.setFillColor(sf::Color(8, 12, 24, 190));
-    panel.setOutlineColor(sf::Color(95, 120, 170, 210));
-    panel.setOutlineThickness(1.0f);
-
-    window.draw(panel);
-
-    sf::Text titleText(font, "Comandi", 17);
-    titleText.setPosition({ x + 14.0f, y + 10.0f });
-    titleText.setFillColor(sf::Color(255, 232, 140));
-    titleText.setStyle(sf::Text::Bold);
-
-    sf::Text controlsText(
-        font,
-        "Frecce: ruota camera   W/S: zoom   SPACE: pausa   +/-: velocita\n"
-        "R: reset camera   T: reset tempo   O: orbite   I: interfaccia\n"
-        "F: esci follow   1-8: pianeti   click: Sole/pianeti   ESC: esci",
-        14
-    );
-    controlsText.setPosition({ x + 14.0f, y + 38.0f });
-    controlsText.setFillColor(sf::Color(225, 232, 245));
-    controlsText.setLineSpacing(1.25f);
-
-    window.draw(titleText);
-    window.draw(controlsText);
-}
-
 int findClickedPlanet(
     int mouseX,
     int mouseY,
@@ -1163,9 +963,9 @@ int main()
     settings.stencilBits = 8;
     settings.majorVersion = 4;
     settings.minorVersion = 1;
-    settings.attributeFlags = sf::ContextSettings::Attribute::Default;
+    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
 
-    sf::RenderWindow window(
+    sf::Window window(
         sf::VideoMode({windowWidth, windowHeight}),
         "Sistema Solare 3D - Tappa 17",
         sf::Style::Default,
@@ -1186,13 +986,6 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.01f, 0.01f, 0.04f, 1.0f);
-
-    sf::Font uiFont;
-    bool uiFontLoaded = loadUIFont(uiFont);
-    window.setView(sf::View(sf::FloatRect(
-        { 0.0f, 0.0f },
-        { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-    )));
 
     GLuint shaderProgram = createShaderProgram();
 
@@ -1501,7 +1294,6 @@ int main()
     bool isPaused = false;
     float timeScale = 1.0f;
     bool showOrbits = true;
-    bool showInfoPanel = true;
     bool isFollowingPlanet = false;
     float previousCameraYaw = cameraYaw;
     float previousCameraPitch = cameraPitch;
@@ -1614,14 +1406,7 @@ int main()
                     showOrbits = !showOrbits;
                     std::cout << (showOrbits ? "Orbite visibili.\n" : "Orbite nascoste.\n");
                 }
-
-                if (keyPressed->code == sf::Keyboard::Key::I)
-                {
-                    showInfoPanel = !showInfoPanel;
-                    std::cout << (showInfoPanel ? "Pannello informativo visibile.\n" : "Pannello informativo nascosto.\n");
-                }
-
-                int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
+int keyboardPlanetIndex = planetIndexFromKey(keyPressed->code);
 
                 if (keyboardPlanetIndex != -1)
                 {
@@ -1765,10 +1550,6 @@ int main()
                     glm::value_ptr(projection)
                 );
 
-                window.setView(sf::View(sf::FloatRect(
-                    { 0.0f, 0.0f },
-                    { static_cast<float>(windowWidth), static_cast<float>(windowHeight) }
-                )));
             }
         }
 
@@ -2043,31 +1824,6 @@ int main()
         moonScreenInfo.x = projectedMoon.x;
         moonScreenInfo.y = static_cast<float>(windowHeight) - projectedMoon.y;
         moonScreenInfo.radius = 18.0f;
-
-        if (showInfoPanel)
-        {
-            window.pushGLStates();
-            drawControlsLegend(
-                window,
-                uiFont,
-                uiFontLoaded
-            );
-
-            drawInfoPanel(
-                window,
-                uiFont,
-                uiFontLoaded,
-                planets,
-                selectedPlanetIndex,
-                sunInfo,
-                isSunSelected,
-                moonInfo,
-                isMoonSelected,
-                windowWidth,
-                windowHeight
-            );
-            window.popGLStates();
-        }
 
         window.display();
     }
