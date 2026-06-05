@@ -321,11 +321,15 @@ GLuint createUiShader()
 
 bool initFontAtlas()
 {
+    // Cerca prima il font incluso nel repository (cross-platform)
     const std::vector<std::string> fontPaths = {
+        "assets/fonts/font.ttf",
         "C:/Windows/Fonts/arial.ttf",
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/calibri.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/Library/Fonts/Arial.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
@@ -352,8 +356,12 @@ bool initFontAtlas()
         return false;
     }
 
+    // Determina l'offset corretto (supporta sia .ttf che .ttc)
+    int fontOffset = stbtt_GetFontOffsetForIndex(fontBuffer.data(), 0);
+    if (fontOffset < 0) fontOffset = 0;
+
     stbtt_fontinfo font;
-    if (!stbtt_InitFont(&font, fontBuffer.data(), 0))
+    if (!stbtt_InitFont(&font, fontBuffer.data(), fontOffset))
     {
         std::cerr << "Pannello: font non valido.\n";
         return false;
